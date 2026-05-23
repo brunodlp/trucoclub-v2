@@ -9,8 +9,8 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                // Acá ponemos explícitamente tu link de Vercel y el localhost por si probás en tu compu
-                .allowedOrigins("https://trucoclub-rose.vercel.app", "http://localhost:5173")
+                // 👇 ACÁ ESTÁ LA MAGIA 👇
+                .allowedOriginPatterns("https://trucoclub-rose.vercel.app", "http://localhost:5173")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);
