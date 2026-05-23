@@ -5,7 +5,7 @@ import com.trucoclub.service.TrucoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-@CrossOrigin(origins = "*")
+
 @RestController
 @RequestMapping("/api/truco") // Asegurate de que esta ruta coincida con Postman
 public class TestController {
@@ -31,7 +31,6 @@ public class TestController {
     }
 
     @PostMapping("/jugar")
-    @CrossOrigin(origins = "*")
     public Partida tirarCarta(
             @RequestParam String mesaId,
             @RequestParam String jugador, // <--- Ahora lo usamos dinámicamente
