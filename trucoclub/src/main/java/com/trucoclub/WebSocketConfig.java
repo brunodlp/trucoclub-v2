@@ -24,7 +24,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // El endpoint al que se va a conectar React
         registry.addEndpoint("/ws-truco")
-                .setAllowedOriginPatterns("*") // Permite conexiones desde el localhost:5173
+                .setAllowedOrigins("https://trucoclub-rose.vercel.app", "http://localhost:5173") // Permite conexiones desde el localhost:5173
                 .withSockJS();
     }
 }
