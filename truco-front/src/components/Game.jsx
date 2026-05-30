@@ -115,6 +115,10 @@ export default function Juego() {
   };
 
   const gritar = (accion) => {
+    console.log(
+      `Intentando gritar: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
+    );
+
     if (stompClient && stompClient.connected) {
       stompClient.publish({
         destination: "/app/cantar",
@@ -124,10 +128,17 @@ export default function Juego() {
           accion,
         }),
       });
+      console.log("Mensaje de grito enviado al servidor 🚀");
+    } else {
+      console.error("No hay conexión con el WebSocket :(");
     }
   };
 
   const responder = (accion) => {
+    console.log(
+      `Intentando responder: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
+    );
+
     if (stompClient && stompClient.connected) {
       stompClient.publish({
         destination: "/app/responder",
@@ -137,6 +148,7 @@ export default function Juego() {
           accion,
         }),
       });
+      console.log("Mensaje de respuesta enviado al servidor 🚀");
     }
   };
 
