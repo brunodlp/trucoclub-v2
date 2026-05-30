@@ -250,21 +250,31 @@ public class Partida {
     public void cantarTruco(Jugador elQueCanta, String tipoGrito) {
         if (estadoActual == EstadoJuego.TERMINADO) return;
 
-        if (puntosEnJuegoTruco == 4 || (quienTieneElQuieroTruco != null && elQueCanta != quienTieneElQuieroTruco)) {
-            System.out.println("⚠️ No podés cantar truco ahora.");
+        // CANDADO 1: Solo restringimos por "quienTieneElQuiero" si estamos en el flujo normal (jugando cartas).
+        // Si el estado es ESPERANDO_RESPUESTA_TRUCO, significa que alguien está haciendo una contra-oferta legítima.
+        if (estadoActual == EstadoJuego.ESPERANDO_CARTA) {
+            if (quienTieneElQuieroTruco != null && elQueCanta != quienTieneElQuieroTruco) {
+                System.out.println("⚠️ No podés cantar truco ahora, el rival tiene el 'Quiero'.");
+                return;
+            }
+        }
+
+        // CANDADO 2: Escalerita obligatoria. Así evitamos que se salteen niveles.
+        String grito = tipoGrito.toLowerCase();
+        if (grito.equals("truco") && this.puntosPropuestosTruco == 1) {
+            this.puntosPropuestosTruco = 2;
+        } else if (grito.equals("retruco") && this.puntosPropuestosTruco == 2) {
+            this.puntosPropuestosTruco = 3;
+        } else if (grito.equals("vale cuatro") && this.puntosPropuestosTruco == 3) {
+            this.puntosPropuestosTruco = 4;
+        } else {
+            System.out.println("⚠️ Salto de nivel prohibido o grito repetido.");
             return;
         }
 
-        // Asignamos el valor de la propuesta según el grito
-        String grito = tipoGrito.toLowerCase();
-        if (grito.equals("truco")) this.puntosPropuestosTruco = 2;
-        else if (grito.equals("retruco")) this.puntosPropuestosTruco = 3;
-        else if (grito.equals("vale cuatro")) this.puntosPropuestosTruco = 4;
-
-        // Radar para la consola
         System.out.println("⚖️ MATEMÁTICA - " + elQueCanta.getNombre() + " gritó: " + grito.toUpperCase());
-        System.out.println("⚖️ MATEMÁTICA - Puntos Propuestos en la mesa son: " + this.puntosPropuestosTruco);
 
+        // Actualizamos los estados para que el otro jugador tenga que responder
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
         this.ultimoGrito = tipoGrito.toUpperCase();
