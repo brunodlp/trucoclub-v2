@@ -7,6 +7,7 @@ public class Jugador {
     private String nombre;
     private List<Carta> mano; // las 3 cartas con la que jugaria la mano
     private int puntos; //inicia en 0
+    private List<Carta> cartasJugadas = new ArrayList<>();
 
     public Jugador(String nombre) {
         this.nombre = nombre;
@@ -25,6 +26,9 @@ public class Jugador {
     public List<Carta> getMano() {
         return mano;
     }
+    public List<Carta> getCartasJugadas() {
+        return cartasJugadas;
+    }
 
     public void recibirCarta(Carta c) {
         mano.add(c);
@@ -33,24 +37,23 @@ public class Jugador {
     public int calcularEnvido() {
         int maxPuntaje = 0;
 
-        // Si por algún motivo el jugador no tiene cartas, devolvemos 0
-        if (mano == null || mano.isEmpty()) return 0;
+        // Juntamos TODAS las cartas de esta ronda para calcular bien los puntos
+        List<Carta> todasLasCartas = new ArrayList<>();
+        if (mano != null) todasLasCartas.addAll(mano);
+        if (cartasJugadas != null) todasLasCartas.addAll(cartasJugadas);
 
-        // 1. Comparar combinaciones de a pares usando la lista interna 'mano'
-        for (int i = 0; i < mano.size(); i++) {
-            for (int j = i + 1; j < mano.size(); j++) {
-                //en la primera iteracion comparo la carta 0-1, sigue con 0-2, termina con 1-2
-                Carta c1 = mano.get(i);
-                Carta c2 = mano.get(j);
+        if (todasLasCartas.isEmpty()) return 0;
+
+        // 1. Comparar combinaciones de a pares
+        for (int i = 0; i < todasLasCartas.size(); i++) {
+            for (int j = i + 1; j < todasLasCartas.size(); j++) {
+                Carta c1 = todasLasCartas.get(i);
+                Carta c2 = todasLasCartas.get(j);
                 int puntajeCandidato;
 
-                //comparo si son de igual palo
                 if (c1.getPalo().equals(c2.getPalo())) {
-                    // Mismo palo: 20 + suma de valores (figuras valen 0)
                     puntajeCandidato = 20 + c1.getValorEnvido() + c2.getValorEnvido();
-                    //si no lo son, agarro la carta con mas valor
                 } else {
-                    // Distinto palo: solo el valor individual más alto
                     puntajeCandidato = Math.max(c1.getValorEnvido(), c2.getValorEnvido());
                 }
 
@@ -60,9 +63,8 @@ public class Jugador {
             }
         }
 
-        // 2. Verificación final: Por si hay una sola carta que es más alta que cualquier suma
-        // (Ej: 7 de Oro, 1 de Copa y 2 de Basto -> El envido es 7)
-        for (Carta c : mano) {
+        // 2. Verificación final por carta individual alta
+        for (Carta c : todasLasCartas) {
             if (c.getValorEnvido() > maxPuntaje) {
                 maxPuntaje = c.getValorEnvido();
             }
@@ -73,12 +75,16 @@ public class Jugador {
 
     // Método para jugar una carta y sacarla de la mano
     public Carta jugarCarta(int indice) {
-        return mano.remove(indice);
+        Carta carta = mano.remove(indice);
+        cartasJugadas.add(carta);
+        return carta;
     }
 
     public void sumarPuntos(int cantidad) {
         this.puntos += cantidad;
     }
+
+
 
 }
 

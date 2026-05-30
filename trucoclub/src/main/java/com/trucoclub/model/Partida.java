@@ -18,6 +18,7 @@ public class Partida {
     private Jugador ganadorSegunda = null;
     private int manoActual = 1;
 
+
     // --- ESTADO DEL JUEGO (Lo nuevo) ---
     private EstadoJuego estadoActual;
     private Jugador quienDebeResponder;
@@ -27,6 +28,7 @@ public class Partida {
     private int puntosAnterioresEnvido = 0;
     private boolean envidoCerrado = false;
     private Jugador jugadorQueTeniaElTurnoAntesDelEnvido;
+    private String ultimoGrito = "";
 
     // --- VARIABLES DE TRUCO ---
     private int puntosEnJuegoTruco = 1;
@@ -62,6 +64,10 @@ public class Partida {
 
     public Jugador getMano() {
         return mano;
+    }
+
+    public String getUltimoGrito() {
+        return ultimoGrito;
     }
 
     public Jugador getTurnoActual() {
@@ -128,6 +134,7 @@ public class Partida {
         return puntosPartido;
     }
 
+
     //------------------------------------------------------------------------------
 
     public void empezarRonda() {
@@ -148,6 +155,7 @@ public class Partida {
         this.puntosEnJuegoTruco = 1;
         this.quienTieneElQuieroTruco = null;
         this.trucoGritadoPendiente = false;
+        this.ultimoGrito = "";
 
         // Reset Estados
         this.estadoActual = EstadoJuego.ESPERANDO_CARTA;
@@ -233,7 +241,7 @@ public class Partida {
         // 4. Cambio de estado y asignación de respuesta
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_ENVIDO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
-
+        this.ultimoGrito = tipoGrito.toUpperCase();
         System.out.println("📣 " + elQueCanta.getNombre() + " cantó " + tipoGrito.toUpperCase());
     }
 
@@ -249,6 +257,7 @@ public class Partida {
 
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
+        this.ultimoGrito = tipoGrito.toUpperCase();
         System.out.println("📣 " + elQueCanta.getNombre() + " gritó " + tipoGrito.toUpperCase());
     }
 
@@ -433,21 +442,24 @@ public class Partida {
     }
 
     private void finalizarRonda(Jugador ganadorRonda, int puntosAñadir) {
-        // 1. Sumamos los puntos (esto pondrá el estado en TERMINADO si llega al máximo)
+        // 1. Sumamos los puntos
         sumarPuntosJugador(ganadorRonda, puntosAñadir);
 
-        // 2. BLOQUEO CRÍTICO: Si el estado ya es TERMINADO, salimos del método ACÁ.
-        // No rotamos repartidor, no limpiamos nada, no llamamos a empezarRonda.
+        // 2. Si terminó el partido, morimos acá
         if (this.estadoActual == EstadoJuego.TERMINADO) {
             System.out.println("!!! PARTIDA FINALIZADA - NO SE REPARTE MÁS !!!");
             this.turnoActual = null;
             this.quienDebeResponder = null;
-            return; // <--- ESTO ES LO QUE ESTABA FALTANDO PARA FRENAR EL REPARTO
+            return;
         }
 
-        // 3. Solo si NO terminó el partido, preparamos la siguiente ronda
-        rotarRepartidor();
-        empezarRonda();
+        // 3. 👇 ACÁ CAMBIA LA OPCIÓN 2 👇
+        // En vez de rotar y repartir ya mismo, ponemos pausa para que el frontend respire
+        this.estadoActual = EstadoJuego.ENTRE_MANOS;
+        this.turnoActual = null; // Nadie puede tirar cartas en el entretiempo
+        this.quienDebeResponder = null;
+
+        System.out.println("⏳ Ronda terminada. Esperando confirmación del frontend para repartir...");
     }
 
     private void finalizarRonda(Jugador ganadorRonda) {
@@ -507,6 +519,8 @@ public class Partida {
     public void repartirCartas() {
         jugador1.getMano().clear();
         jugador2.getMano().clear();
+        jugador1.getCartasJugadas().clear();
+        jugador2.getCartasJugadas().clear();
         this.mazo = new Mazo();
         mazo.barajar();
         for (int i = 0; i < 3; i++) {
@@ -527,6 +541,20 @@ public class Partida {
         return resp.equals("truco") ||
                 resp.equals("retruco") ||
                 resp.equals("vale cuatro");
+    }
+
+
+
+    // Agregá este método al final de tu clase Partida.java
+    public void avanzarSiguienteMano() {
+        // Candado de seguridad: solo avanzamos si realmente estábamos esperando
+        if (this.estadoActual != EstadoJuego.ENTRE_MANOS) {
+            return;
+        }
+
+        // Ahora sí, hacemos lo que antes hacíamos automático
+        rotarRepartidor();
+        empezarRonda();
     }
 
 }

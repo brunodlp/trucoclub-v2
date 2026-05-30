@@ -1,5 +1,6 @@
 package com.trucoclub.service;
 
+import com.trucoclub.model.MensajeAccion;
 import com.trucoclub.model.Partida;
 import com.trucoclub.model.Jugador;
 import org.springframework.stereotype.Service;
@@ -41,5 +42,56 @@ public class TrucoService {
             p.realizarJugada(j, indice);
         }
         return obtenerPartida(id);
+    }
+    public Partida avanzarSiguienteMano(String mesaId) {
+        // Acá usás la lógica que ya tengas para buscar la partida (ej: partidasMap.get(mesaId))
+        Partida partida = obtenerPartida(mesaId);
+
+        if (partida != null) {
+            partida.avanzarSiguienteMano(); // El método que modificamos en la clase Partida
+        }
+
+        return partida;
+    }
+
+    // --- LÓGICA DE GRITOS (Envido, Truco, Mazo) ---
+    public Partida procesarCanto(MensajeAccion mensaje) {
+        Partida partida = obtenerPartida(mensaje.getMesaId());
+        if (partida == null) return null;
+
+        Jugador jugador = obtenerJugadorPorNombre(partida, mensaje.getNombreJugador());
+        if (jugador == null) return partida;
+
+        String accion = mensaje.getAccion().toLowerCase();
+
+        if (accion.equals("irse_al_mazo")) {
+            partida.irseAlMazo(jugador);
+        } else if (accion.contains("envido")) {
+            partida.cantarEnvido(jugador, accion);
+        } else if (accion.contains("truco")) {
+            partida.cantarTruco(jugador, accion);
+        }
+
+        return partida;
+    }
+
+    // --- LÓGICA DE RESPUESTAS (Quiero, No quiero, Retruco) ---
+    public Partida procesarRespuesta(MensajeAccion mensaje) {
+        Partida partida = obtenerPartida(mensaje.getMesaId());
+        if (partida == null) return null;
+
+        Jugador jugador = obtenerJugadorPorNombre(partida, mensaje.getNombreJugador());
+        if (jugador == null) return partida;
+
+        partida.responder(jugador, mensaje.getAccion());
+
+        return partida;
+    }
+
+    // --- MÉTODO AUXILIAR PARA BUSCAR AL JUGADOR ---
+    private Jugador obtenerJugadorPorNombre(Partida partida, String nombre) {
+        if (partida.getJugador1().getNombre().equals(nombre)) return partida.getJugador1();
+        if (partida.getJugador2().getNombre().equals(nombre)) return partida.getJugador2();
+        return null;
     }
 }
