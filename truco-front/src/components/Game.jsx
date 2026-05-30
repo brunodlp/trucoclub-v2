@@ -335,6 +335,7 @@ export default function Juego() {
                   {/* CASO A: Botones de turno normal */}
                   {partida.estadoActual === "ESPERANDO_CARTA" && esMiTurno && (
                     <div className="flex gap-3">
+                      {/* --- BOTONES DE ENVIDO --- */}
                       {partida.manoActual === 1 && !partida.envidoCerrado && (
                         <>
                           <button
@@ -357,12 +358,42 @@ export default function Juego() {
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => gritar("truco")}
-                        className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
-                      >
-                        Truco
-                      </button>
+
+                      {/* --- BOTONES DE TRUCO (INTELIGENTES) --- */}
+                      {/* Solo muestro Truco si estamos en nivel 1 (nadie cantó) */}
+                      {partida.puntosEnJuegoTruco === 1 && (
+                        <button
+                          onClick={() => gritar("truco")}
+                          className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
+                        >
+                          Truco
+                        </button>
+                      )}
+
+                      {/* Solo muestro Retruco si estamos en nivel 2 Y yo tengo el quiero */}
+                      {partida.puntosEnJuegoTruco === 2 &&
+                        partida.quienTieneElQuieroTruco?.nombre ===
+                          miJugador.nombre && (
+                          <button
+                            onClick={() => gritar("retruco")}
+                            className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
+                          >
+                            Retruco
+                          </button>
+                        )}
+
+                      {/* Solo muestro Vale Cuatro si estamos en nivel 3 Y yo tengo el quiero */}
+                      {partida.puntosEnJuegoTruco === 3 &&
+                        partida.quienTieneElQuieroTruco?.nombre ===
+                          miJugador.nombre && (
+                          <button
+                            onClick={() => gritar("vale cuatro")}
+                            className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
+                          >
+                            Vale Cuatro
+                          </button>
+                        )}
+
                       <button
                         onClick={() => gritar("irse_al_mazo")}
                         className="bg-neutral-700 hover:bg-neutral-600 px-4 py-2 rounded font-bold transition text-neutral-300 border border-neutral-600"
