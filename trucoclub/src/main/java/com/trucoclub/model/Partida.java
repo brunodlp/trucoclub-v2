@@ -32,6 +32,7 @@ public class Partida {
 
     // --- VARIABLES DE TRUCO ---
     private int puntosEnJuegoTruco = 1;
+    private int puntosPropuestosTruco = 1;
     private Jugador quienTieneElQuieroTruco = null;
     private boolean trucoGritadoPendiente = false; // Para recordar que hay un Truco en pausa
 
@@ -153,6 +154,7 @@ public class Partida {
 
         // Reset Truco
         this.puntosEnJuegoTruco = 1;
+        this.puntosPropuestosTruco = 1;
         this.quienTieneElQuieroTruco = null;
         this.trucoGritadoPendiente = false;
         this.ultimoGrito = "";
@@ -246,18 +248,23 @@ public class Partida {
     }
 
     public void cantarTruco(Jugador elQueCanta, String tipoGrito) {
-        if (estadoActual == EstadoJuego.TERMINADO) {
-            System.out.println("La partida ya terminó. No se pueden realizar más acciones.");
-            return;
-        }
+        if (estadoActual == EstadoJuego.TERMINADO) return;
+
         if (puntosEnJuegoTruco == 4 || (quienTieneElQuieroTruco != null && elQueCanta != quienTieneElQuieroTruco)) {
             System.out.println("No podés cantar truco ahora.");
             return;
         }
 
+        // 👇 ACÁ ESTÁ LA MAGIA 👇
+        String grito = tipoGrito.toLowerCase();
+        if (grito.equals("truco")) this.puntosPropuestosTruco = 2;
+        else if (grito.equals("retruco")) this.puntosPropuestosTruco = 3;
+        else if (grito.equals("vale cuatro")) this.puntosPropuestosTruco = 4;
+
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
-        this.ultimoGrito = tipoGrito.toUpperCase();
+        this.ultimoGrito = tipoGrito.toUpperCase(); // Actualizamos el último grito
+
         System.out.println("📣 " + elQueCanta.getNombre() + " gritó " + tipoGrito.toUpperCase());
     }
 
@@ -376,29 +383,28 @@ public class Partida {
 
     private void procesarRespuestaTruco(Jugador j, String respuesta) {
         if (respuesta.equalsIgnoreCase("quiero")) {
-            // Lógica de progresión de puntos
-            if (puntosEnJuegoTruco == 1) puntosEnJuegoTruco = 2;
-            else if (puntosEnJuegoTruco == 2) puntosEnJuegoTruco = 3;
-            else if (puntosEnJuegoTruco == 3) puntosEnJuegoTruco = 4;
+            // Si acepta, la apuesta real se iguala a la propuesta
+            this.puntosEnJuegoTruco = this.puntosPropuestosTruco;
 
             this.quienTieneElQuieroTruco = (j == jugador1) ? jugador1 : jugador2;
             this.quienDebeResponder = null;
             this.trucoGritadoPendiente = false;
 
             if (rondaDeberiaFinalizar()) {
-                // Si aceptaron el truco y ya se jugaron todas las cartas
                 Jugador ganadorRonda = (ganadorPrimera != null) ? ganadorPrimera : this.mano;
                 finalizarRonda(ganadorRonda);
             } else {
                 this.estadoActual = EstadoJuego.ESPERANDO_CARTA;
             }
+
         } else if (respuesta.equalsIgnoreCase("no quiero")) {
             Jugador ganador = (j == jugador1) ? jugador2 : jugador1;
-            // Si no quieren, el rival gana los puntos anteriores (mínimo 1)
-            int puntosAnteriores = (puntosEnJuegoTruco == 1) ? 1 : puntosEnJuegoTruco - 1;
-            finalizarRonda(ganador, puntosAnteriores);
+            // Si no quiere, el rival cobra un punto menos de lo que se propuso
+            int puntosACobrar = this.puntosPropuestosTruco - 1;
+            finalizarRonda(ganador, puntosACobrar);
+
         } else if (esUnRecantoDeTruco(respuesta)) {
-            cantarTruco(j, respuesta); // Retruco o Vale Cuatro
+            cantarTruco(j, respuesta);
         }
     }
 
