@@ -251,21 +251,23 @@ public class Partida {
         if (estadoActual == EstadoJuego.TERMINADO) return;
 
         if (puntosEnJuegoTruco == 4 || (quienTieneElQuieroTruco != null && elQueCanta != quienTieneElQuieroTruco)) {
-            System.out.println("No podés cantar truco ahora.");
+            System.out.println("⚠️ No podés cantar truco ahora.");
             return;
         }
 
-        // 👇 ACÁ ESTÁ LA MAGIA 👇
+        // Asignamos el valor de la propuesta según el grito
         String grito = tipoGrito.toLowerCase();
         if (grito.equals("truco")) this.puntosPropuestosTruco = 2;
         else if (grito.equals("retruco")) this.puntosPropuestosTruco = 3;
         else if (grito.equals("vale cuatro")) this.puntosPropuestosTruco = 4;
 
+        // Radar para la consola
+        System.out.println("⚖️ MATEMÁTICA - " + elQueCanta.getNombre() + " gritó: " + grito.toUpperCase());
+        System.out.println("⚖️ MATEMÁTICA - Puntos Propuestos en la mesa son: " + this.puntosPropuestosTruco);
+
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
-        this.ultimoGrito = tipoGrito.toUpperCase(); // Actualizamos el último grito
-
-        System.out.println("📣 " + elQueCanta.getNombre() + " gritó " + tipoGrito.toUpperCase());
+        this.ultimoGrito = tipoGrito.toUpperCase();
     }
 
     public void irseAlMazo(Jugador j) {
@@ -382,8 +384,10 @@ public class Partida {
     }
 
     private void procesarRespuestaTruco(Jugador j, String respuesta) {
+        System.out.println("⚖️ MATEMÁTICA - Respuesta recibida: " + respuesta);
+
         if (respuesta.equalsIgnoreCase("quiero")) {
-            // Si acepta, la apuesta real se iguala a la propuesta
+            // Si acepta, oficializamos la apuesta
             this.puntosEnJuegoTruco = this.puntosPropuestosTruco;
 
             this.quienTieneElQuieroTruco = (j == jugador1) ? jugador1 : jugador2;
@@ -399,8 +403,12 @@ public class Partida {
 
         } else if (respuesta.equalsIgnoreCase("no quiero")) {
             Jugador ganador = (j == jugador1) ? jugador2 : jugador1;
-            // Si no quiere, el rival cobra un punto menos de lo que se propuso
+
+            // LA LÍNEA CRÍTICA: Cobramos 1 punto menos de lo que se propuso
             int puntosACobrar = this.puntosPropuestosTruco - 1;
+
+            System.out.println("⚖️ MATEMÁTICA - No quiso. Se habían propuesto: " + this.puntosPropuestosTruco + " -> El ganador cobra: " + puntosACobrar);
+
             finalizarRonda(ganador, puntosACobrar);
 
         } else if (esUnRecantoDeTruco(respuesta)) {
