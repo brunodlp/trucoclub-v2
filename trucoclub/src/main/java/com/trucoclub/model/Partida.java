@@ -271,20 +271,25 @@ public class Partida {
     }
 
     public void irseAlMazo(Jugador j) {
-        if (estadoActual == EstadoJuego.TERMINADO)
-            return;
+        if (estadoActual == EstadoJuego.TERMINADO) return;
 
         Jugador ganador = (j == jugador1) ? jugador2 : jugador1;
         int puntosACobrar;
 
-        // Si el envido ya se cerró, aunque la mesa esté vacía, se cobra solo 1 punto (o lo que valga el truco).
-        if (manoActual == 1 && cartasEnMesa.isEmpty() && !this.envidoCerrado) {
+        // 1. Si el truco ya se aceptó y vale más de 1, SIEMPRE se cobra el valor del Truco
+        if (this.puntosEnJuegoTruco > 1) {
+            puntosACobrar = this.puntosEnJuegoTruco;
+            System.out.println("🏳️ " + j.getNombre() + " se fue al mazo con apuestas hechas. El rival gana " + puntosACobrar);
+        }
+        // 2. Regla especial: Si nadie cantó truco y se van al mazo en la primera mano sin tirar cartas
+        else if (manoActual == 1 && cartasEnMesa.isEmpty() && !this.envidoCerrado) {
             puntosACobrar = 2;
             System.out.println("🏳️ " + j.getNombre() + " se fue al mazo antes de jugar. Penalidad: 2 puntos.");
-        } else {
-            // Si ya se jugó una carta O el envido ya pasó, cobramos el valor del truco
-            puntosACobrar = puntosEnJuegoTruco;
-            System.out.println("🏳️ " + j.getNombre() + " se fue al mazo. El rival gana " + puntosACobrar + " punto/s.");
+        }
+        // 3. Flujo normal (ya jugaron cartas y nadie cantó truco)
+        else {
+            puntosACobrar = this.puntosEnJuegoTruco; // Que será 1
+            System.out.println("🏳️ " + j.getNombre() + " se fue al mazo. El rival gana " + puntosACobrar);
         }
 
         finalizarRonda(ganador, puntosACobrar);
