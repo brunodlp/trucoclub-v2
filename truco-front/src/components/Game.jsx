@@ -332,7 +332,7 @@ export default function Juego() {
 
                 {/* --- BOTONERA CONDICIONAL (TAILWIND) --- */}
                 <div className="h-20 flex items-center justify-center">
-                  {/* Botones de turno normal */}
+                  {/* CASO A: Botones de turno normal */}
                   {partida.estadoActual === "ESPERANDO_CARTA" && esMiTurno && (
                     <div className="flex gap-3">
                       {partida.manoActual === 1 && !partida.envidoCerrado && (
@@ -372,7 +372,7 @@ export default function Juego() {
                     </div>
                   )}
 
-                  {/* Botones de respuesta a ENVIDO */}
+                  {/* CASO B: Botones de respuesta a ENVIDO */}
                   {partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
                     meTocaResponder && (
                       <div className="flex gap-3">
@@ -389,7 +389,11 @@ export default function Juego() {
                           No Quiero
                         </button>
 
-                        {partida.ultimoGrito !== "REAL ENVIDO" &&
+                        {/* Solución Error 1 y 3 (Envido infinito y botón faltante): 
+                          Solo mostramos "Envido" si los puntos en juego son menos de 4 (para cortar el Envido-Envido infinito)
+                          y si no cantaron Real ni Falta. */}
+                        {partida.puntosEnJuegoEnvido < 4 &&
+                          partida.ultimoGrito !== "REAL ENVIDO" &&
                           partida.ultimoGrito !== "FALTA ENVIDO" && (
                             <button
                               onClick={() => responder("envido")}
@@ -398,6 +402,19 @@ export default function Juego() {
                               Envido
                             </button>
                           )}
+
+                        {/* Mostramos "Real Envido" a menos que ya hayan cantado Real Envido o Falta Envido */}
+                        {partida.ultimoGrito !== "REAL ENVIDO" &&
+                          partida.ultimoGrito !== "FALTA ENVIDO" && (
+                            <button
+                              onClick={() => responder("real envido")}
+                              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
+                            >
+                              Real Envido
+                            </button>
+                          )}
+
+                        {/* "Falta Envido" siempre aparece a menos que ya hayan cantado Falta Envido */}
                         {partida.ultimoGrito !== "FALTA ENVIDO" && (
                           <button
                             onClick={() => responder("falta envido")}
@@ -409,7 +426,7 @@ export default function Juego() {
                       </div>
                     )}
 
-                  {/* Botones de respuesta a TRUCO */}
+                  {/* CASO C: Botones de respuesta a TRUCO */}
                   {partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" &&
                     meTocaResponder && (
                       <div className="flex gap-3">
@@ -425,12 +442,26 @@ export default function Juego() {
                         >
                           No Quiero
                         </button>
-                        <button
-                          onClick={() => responder("retruco")}
-                          className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded font-bold transition"
-                        >
-                          Quiero Retruco
-                        </button>
+
+                        {/* Solución Error 2 y 3: Escalera obligatoria de Truco */}
+                        {partida.ultimoGrito === "TRUCO" && (
+                          <button
+                            onClick={() => responder("retruco")}
+                            className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded font-bold transition"
+                          >
+                            Quiero Retruco
+                          </button>
+                        )}
+                        {partida.ultimoGrito === "RETRUCO" && (
+                          <button
+                            onClick={() => responder("vale cuatro")}
+                            className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded font-bold transition"
+                          >
+                            Quiero Vale Cuatro
+                          </button>
+                        )}
+
+                        {/* Si cantaron VALE CUATRO, no se dibuja ningún botón extra, cortando el bucle */}
                       </div>
                     )}
                 </div>
