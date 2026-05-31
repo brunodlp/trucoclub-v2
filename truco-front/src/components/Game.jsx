@@ -348,7 +348,7 @@ export default function Juego() {
                             onClick={() => gritar("real envido")}
                             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
                           >
-                            Real Envido
+                            Real Envidoooo
                           </button>
                           <button
                             onClick={() => gritar("falta envido")}
