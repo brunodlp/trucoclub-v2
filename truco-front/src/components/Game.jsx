@@ -145,18 +145,24 @@ export default function Juego() {
   // ==========================================
   const prevPartidaRef = useRef(null);
   const [globoMemoria, setGloboMemoria] = useState(null);
-
+  const [secuenciaDialogo, setSecuenciaDialogo] = useState([]);
+  // ==========================================
+  // EFECTO 1: DETECTAR CAMBIOS Y ARMAR EL GUION
+  // ==========================================
   useEffect(() => {
     if (partida && prevPartidaRef.current) {
       const prev = prevPartidaRef.current;
 
-      // 1. ¿Alguien jugó una carta? -> Pinchamos el globo
+      // 1. ¿Alguien jugó una carta? -> Cortamos la película
       const cartasAntes =
         prev.jugador1.cartasJugadas.length + prev.jugador2.cartasJugadas.length;
       const cartasAhora =
         partida.jugador1.cartasJugadas.length +
         partida.jugador2.cartasJugadas.length;
-      if (cartasAhora > cartasAntes) setGloboMemoria(null);
+      if (cartasAhora > cartasAntes) {
+        setGloboMemoria(null);
+        setSecuenciaDialogo([]);
+      }
 
       // 2. ¿Grito nuevo? -> Limpiamos memoria
       if (
@@ -164,6 +170,7 @@ export default function Juego() {
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO"
       ) {
         setGloboMemoria(null);
+        setSecuenciaDialogo([]);
       }
 
       // 3. SECUENCIA DE RESPUESTA AL ENVIDO
@@ -176,16 +183,12 @@ export default function Juego() {
         const ptsGanadosJ2 = partida.jugador2.puntos - prev.jugador2.puntos;
         const puntosEnJuego = prev.puntosEnJuegoEnvido;
 
-        // Si sumaron el total en juego, fue Quiero. Si sumaron menos, fue No Quiero.
         const fueQuiero =
           ptsGanadosJ1 === puntosEnJuego || ptsGanadosJ2 === puntosEnJuego;
 
         if (!fueQuiero) {
           setGloboMemoria({ texto: "NO QUIERO", autor: autorRespuesta });
         } else {
-          // --- ¡ARRANCA LA PELÍCULA DEL QUIERO! ---
-          setGloboMemoria({ texto: "¡QUIERO!", autor: autorRespuesta });
-
           const ptsJ1 = calcularEnvidoReact(partida.jugador1);
           const ptsJ2 = calcularEnvidoReact(partida.jugador2);
 
@@ -195,28 +198,23 @@ export default function Juego() {
           const puntosGanador = j1Gano ? ptsJ1 : ptsJ2;
           const puntosPerdedor = j1Gano ? ptsJ2 : ptsJ1;
 
-          // Timer 1: A los 1.5s, el perdedor anuncia sus puntos
-          setTimeout(() => {
-            setGloboMemoria({
+          // 🎬 Armamos el guion para que React lo reproduzca de forma segura
+          setSecuenciaDialogo([
+            { delay: 0, texto: "¡QUIERO!", autor: autorRespuesta },
+            {
+              delay: 1500,
               texto: `Tengo ${puntosPerdedor}`,
               autor: perdedor.nombre,
-            });
-
-            // Timer 2: A los 4s, el ganador retruca
-            setTimeout(() => {
-              if (puntosGanador === puntosPerdedor) {
-                setGloboMemoria({
-                  texto: "Son buenas, gano por ser mano",
-                  autor: ganador.nombre,
-                });
-              } else {
-                setGloboMemoria({
-                  texto: `${puntosGanador} son mejores`,
-                  autor: ganador.nombre,
-                });
-              }
-            }, 2500);
-          }, 1500);
+            },
+            {
+              delay: 4000,
+              texto:
+                puntosGanador === puntosPerdedor
+                  ? "Son buenas, gano por ser mano"
+                  : `${puntosGanador} son mejores`,
+              autor: ganador.nombre,
+            },
+          ]);
         }
       }
 
@@ -233,16 +231,35 @@ export default function Juego() {
         }
       }
 
-      // 5. ¿Arrancó mano nueva? -> Limpiamos
+      // 5. ¿Arrancó mano nueva? -> Limpiamos todo
       if (
         prev.estadoActual === "ENTRE_MANOS" &&
         partida.estadoActual === "ESPERANDO_CARTA"
       ) {
         setGloboMemoria(null);
+        setSecuenciaDialogo([]);
       }
     }
     prevPartidaRef.current = partida;
   }, [partida]);
+
+  // ==========================================
+  // EFECTO 2: EL DIRECTOR DE CINE (Reproduce el guion)
+  // ==========================================
+  useEffect(() => {
+    // Si no hay guion, no hacemos nada
+    if (secuenciaDialogo.length === 0) return;
+
+    // Disparamos todos los timers juntos basados en su "delay"
+    const timers = secuenciaDialogo.map((dialogo) => {
+      return setTimeout(() => {
+        setGloboMemoria({ texto: dialogo.texto, autor: dialogo.autor });
+      }, dialogo.delay);
+    });
+
+    // ¡ESTO ARREGLA EL BUG! Si algo interrumpe, limpiamos la basura.
+    return () => timers.forEach(clearTimeout);
+  }, [secuenciaDialogo]);
 
   // ==========================================
   // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
@@ -365,13 +382,13 @@ export default function Juego() {
                 onClick={() => setPuntosMesa(15)}
                 className={`px-6 py-2 rounded-lg font-bold transition-all ${puntosMesa === 15 ? "bg-orange-600 text-white shadow-lg shadow-orange-900/50 scale-105" : "bg-neutral-700 text-neutral-400 hover:bg-neutral-600"}`}
               >
-                A 15 (Malas)
+                A 15
               </button>
               <button
                 onClick={() => setPuntosMesa(30)}
                 className={`px-6 py-2 rounded-lg font-bold transition-all ${puntosMesa === 30 ? "bg-orange-600 text-white shadow-lg shadow-orange-900/50 scale-105" : "bg-neutral-700 text-neutral-400 hover:bg-neutral-600"}`}
               >
-                A 30 (Buenas)
+                A 30
               </button>
             </div>
 
