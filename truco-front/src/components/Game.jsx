@@ -3,6 +3,31 @@ import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import { useLocation } from "react-router-dom";
 
+// ==========================================
+// CALCULADORA DE ENVIDO (Frontend)
+// ==========================================
+const calcularEnvidoReact = (jugador) => {
+  if (!jugador) return 0;
+  const cartas = [...jugador.mano, ...jugador.cartasJugadas];
+  const getValor = (num) => (num >= 10 ? 0 : num);
+
+  let max = 0;
+  for (let i = 0; i < cartas.length; i++) {
+    for (let j = i + 1; j < cartas.length; j++) {
+      let pts =
+        cartas[i].palo === cartas[j].palo
+          ? 20 + getValor(cartas[i].numero) + getValor(cartas[j].numero)
+          : Math.max(getValor(cartas[i].numero), getValor(cartas[j].numero));
+      if (pts > max) max = pts;
+    }
+  }
+
+  if (max === 0 && cartas.length > 0) {
+    max = Math.max(...cartas.map((c) => getValor(c.numero)));
+  }
+  return max;
+};
+
 export default function Juego() {
   const [mesaId, setMesaId] = useState(null);
   const [inputMesaId, setInputMesaId] = useState("");
@@ -116,7 +141,7 @@ export default function Juego() {
   ]);
 
   // ==========================================
-  // MEMORIA DE GLOBOS (Persistentes hasta jugar carta)
+  // MEMORIA DE GLOBOS Y PELÍCULA DEL ENVIDO 🍿
   // ==========================================
   const prevPartidaRef = useRef(null);
   const [globoMemoria, setGloboMemoria] = useState(null);
@@ -131,12 +156,9 @@ export default function Juego() {
       const cartasAhora =
         partida.jugador1.cartasJugadas.length +
         partida.jugador2.cartasJugadas.length;
+      if (cartasAhora > cartasAntes) setGloboMemoria(null);
 
-      if (cartasAhora > cartasAntes) {
-        setGloboMemoria(null);
-      }
-
-      // 2. ¿Alguien cantó un grito nuevo (Truco, Envido)? -> Borramos la memoria para que tome prioridad el grito actual
+      // 2. ¿Grito nuevo? -> Limpiamos memoria
       if (
         partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO"
@@ -144,39 +166,74 @@ export default function Juego() {
         setGloboMemoria(null);
       }
 
-      // 3. ¿Alguien respondió (Quiero / No Quiero)? -> Guardamos la respuesta
+      // 3. SECUENCIA DE RESPUESTA AL ENVIDO
       if (
-        (prev.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
-          prev.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO") &&
-        partida.estadoActual !== "ESPERANDO_RESPUESTA_TRUCO" &&
-        partida.estadoActual !== "ESPERANDO_RESPUESTA_ENVIDO"
+        prev.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
+        partida.estadoActual === "ESPERANDO_CARTA"
       ) {
         const autorRespuesta = prev.quienDebeResponder?.nombre;
-        let textoDeducido = "¡QUIERO!";
+        const ptsGanadosJ1 = partida.jugador1.puntos - prev.jugador1.puntos;
+        const ptsGanadosJ2 = partida.jugador2.puntos - prev.jugador2.puntos;
+        const puntosEnJuego = prev.puntosEnJuegoEnvido;
 
-        if (partida.estadoActual === "ENTRE_MANOS") {
-          textoDeducido = "NO QUIERO";
-        } else if (
-          prev.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
-          partida.estadoActual === "ESPERANDO_CARTA"
-        ) {
-          const puntosSumadosJ1 =
-            partida.jugador1.puntos - prev.jugador1.puntos;
-          const puntosSumadosJ2 =
-            partida.jugador2.puntos - prev.jugador2.puntos;
-          if (
-            (puntosSumadosJ1 > 0 &&
-              puntosSumadosJ1 < prev.puntosEnJuegoEnvido) ||
-            (puntosSumadosJ2 > 0 && puntosSumadosJ2 < prev.puntosEnJuegoEnvido)
-          ) {
-            textoDeducido = "NO QUIERO";
-          }
+        // Si sumaron el total en juego, fue Quiero. Si sumaron menos, fue No Quiero.
+        const fueQuiero =
+          ptsGanadosJ1 === puntosEnJuego || ptsGanadosJ2 === puntosEnJuego;
+
+        if (!fueQuiero) {
+          setGloboMemoria({ texto: "NO QUIERO", autor: autorRespuesta });
+        } else {
+          // --- ¡ARRANCA LA PELÍCULA DEL QUIERO! ---
+          setGloboMemoria({ texto: "¡QUIERO!", autor: autorRespuesta });
+
+          const ptsJ1 = calcularEnvidoReact(partida.jugador1);
+          const ptsJ2 = calcularEnvidoReact(partida.jugador2);
+
+          const j1Gano = ptsGanadosJ1 > 0;
+          const ganador = j1Gano ? partida.jugador1 : partida.jugador2;
+          const perdedor = j1Gano ? partida.jugador2 : partida.jugador1;
+          const puntosGanador = j1Gano ? ptsJ1 : ptsJ2;
+          const puntosPerdedor = j1Gano ? ptsJ2 : ptsJ1;
+
+          // Timer 1: A los 1.5s, el perdedor anuncia sus puntos
+          setTimeout(() => {
+            setGloboMemoria({
+              texto: `Tengo ${puntosPerdedor}`,
+              autor: perdedor.nombre,
+            });
+
+            // Timer 2: A los 4s, el ganador retruca
+            setTimeout(() => {
+              if (puntosGanador === puntosPerdedor) {
+                setGloboMemoria({
+                  texto: "Son buenas, gano por ser mano",
+                  autor: ganador.nombre,
+                });
+              } else {
+                setGloboMemoria({
+                  texto: `${puntosGanador} son mejores`,
+                  autor: ganador.nombre,
+                });
+              }
+            }, 2500);
+          }, 1500);
         }
-
-        setGloboMemoria({ texto: textoDeducido, autor: autorRespuesta });
       }
 
-      // 4. ¿Arrancó mano nueva? -> Limpiamos todo
+      // 4. SECUENCIA DE RESPUESTA AL TRUCO
+      else if (
+        prev.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" &&
+        partida.estadoActual !== "ESPERANDO_RESPUESTA_TRUCO"
+      ) {
+        const autorRespuesta = prev.quienDebeResponder?.nombre;
+        if (partida.estadoActual === "ENTRE_MANOS") {
+          setGloboMemoria({ texto: "NO QUIERO", autor: autorRespuesta });
+        } else {
+          setGloboMemoria({ texto: "¡QUIERO!", autor: autorRespuesta });
+        }
+      }
+
+      // 5. ¿Arrancó mano nueva? -> Limpiamos
       if (
         prev.estadoActual === "ENTRE_MANOS" &&
         partida.estadoActual === "ESPERANDO_CARTA"
