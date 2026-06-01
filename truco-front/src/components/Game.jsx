@@ -9,6 +9,7 @@ export default function Juego() {
   const [partida, setPartida] = useState(null);
   const [stompClient, setStompClient] = useState(null);
   const [jugadorAsignado, setJugadorAsignado] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const location = useLocation();
   const miNombreDeUsuario = location.state?.usuarioLogueado || "Invitado";
 
@@ -42,6 +43,7 @@ export default function Juego() {
       reconnectDelay: 5000,
       onConnect: () => {
         console.log("¡Conectado a los WebSockets del Truco!");
+        setIsConnected(true);
         client.subscribe(`/topic/partida/${mesaId}`, (message) => {
           const partidaActualizada = JSON.parse(message.body);
           setPartida(partidaActualizada);
@@ -78,18 +80,23 @@ export default function Juego() {
   // ==========================================
   // AUTO-ASIGNADOR DE JUGADORES
   // ==========================================
+  // ==========================================
+  // AUTO-ASIGNADOR DE JUGADORES
+  // ==========================================
   useEffect(() => {
-    // Solo actuamos si la partida ya cargó, si no tenemos silla, y si el cable WS está conectado
-    if (partida && !jugadorAsignado && stompClient && stompClient.connected) {
+    // 👈 Ahora usamos isConnected en vez de stompClient.connected
+    if (partida && !jugadorAsignado && stompClient && isConnected) {
       if (partida.jugador1.nombre === miNombreDeUsuario) {
-        // CASO 1: Soy el Jugador 1 (Me reconoció)
         setJugadorAsignado(miNombreDeUsuario);
       } else if (partida.jugador2.nombre === miNombreDeUsuario) {
-        // CASO 2: Soy el Jugador 2 (Ya estaba en la mesa y recargué la página)
         setJugadorAsignado(miNombreDeUsuario);
-      } else if (partida.jugador2.nombre === "Rival") {
-        // CASO 3: El asiento 2 está libre (Dice "Rival"). ¡Me lo apropio!
+      } else if (
+        partida.jugador2.nombre === "Rival" ||
+        partida.jugador2.nombre === "IA"
+      ) {
         setJugadorAsignado(miNombreDeUsuario);
+
+        // Le avisamos a Java que ocupe esta silla libre
         stompClient.publish({
           destination: "/app/sentarse",
           body: JSON.stringify({
@@ -99,12 +106,18 @@ export default function Juego() {
           }),
         });
       } else {
-        // CASO 4: Hay 2 personas distintas jugando. ¡La mesa está llena!
         alert("¡Mesa llena! Ya hay dos personas jugando acá.");
-        setMesaId(null); // Lo pateamos a la pantalla principal
+        setMesaId(null);
       }
     }
-  }, [partida, jugadorAsignado, stompClient, mesaId, miNombreDeUsuario]);
+  }, [
+    partida,
+    jugadorAsignado,
+    stompClient,
+    isConnected,
+    mesaId,
+    miNombreDeUsuario,
+  ]);
 
   // ==========================================
   // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
