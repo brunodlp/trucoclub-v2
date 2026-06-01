@@ -259,11 +259,24 @@ export default function Juego() {
         </div>
       ) : (
         <div className="max-w-4xl mx-auto flex flex-col items-center">
-          <div className="bg-neutral-800 px-6 py-2 rounded-full mb-6 border border-neutral-700">
-            Mesa ID:{" "}
-            <span className="text-yellow-400 font-mono font-bold select-all">
-              {mesaId}
+          {/* --- INDICADOR DE MESA Y PUNTOS --- */}
+          <div className="bg-neutral-800 px-6 py-2 rounded-full mb-6 border border-neutral-700 flex items-center gap-4 shadow-lg">
+            <span>
+              Mesa ID:{" "}
+              <span className="text-yellow-400 font-mono font-bold select-all">
+                {mesaId}
+              </span>
             </span>
+
+            {/* Si ya cargó la partida, mostramos a cuánto se juega */}
+            {partida && partida.puntosPartido && (
+              <>
+                <span className="text-neutral-500">|</span>
+                <span className="text-green-400 font-bold uppercase tracking-wider text-sm">
+                  A {partida.puntosPartido} Puntos
+                </span>
+              </>
+            )}
           </div>
 
           {partida && jugadorAsignado && miJugador && rival && (
