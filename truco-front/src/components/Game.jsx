@@ -12,7 +12,7 @@ export default function Juego() {
   const [isConnected, setIsConnected] = useState(false);
   const location = useLocation();
   const miNombreDeUsuario = location.state?.usuarioLogueado || "Invitado";
-  const [puntosMesa, setPuntosMesa] = useState(30); // 👈 NUEVO ESTADO
+  const [puntosMesa, setPuntosMesa] = useState(30);
 
   // ==========================================
   // 1. CONEXIÓN INICIAL Y WEBSOCKETS
@@ -72,20 +72,16 @@ export default function Juego() {
             body: JSON.stringify({}),
           });
         }
-      }, 3000); // Frena 3 segundos para mostrar el resultado
+      }, 3000);
 
       return () => clearTimeout(timer);
     }
   }, [partida?.estadoActual, stompClient, mesaId]);
 
   // ==========================================
-  // AUTO-ASIGNADOR DE JUGADORES
-  // ==========================================
-  // ==========================================
-  // AUTO-ASIGNADOR DE JUGADORES
+  // AUTO-ASIGNADOR DE JUGADORES (Corregido y Único)
   // ==========================================
   useEffect(() => {
-    // 👈 Ahora usamos isConnected en vez de stompClient.connected
     if (partida && !jugadorAsignado && stompClient && isConnected) {
       if (partida.jugador1.nombre === miNombreDeUsuario) {
         setJugadorAsignado(miNombreDeUsuario);
@@ -97,13 +93,12 @@ export default function Juego() {
       ) {
         setJugadorAsignado(miNombreDeUsuario);
 
-        // Le avisamos a Java que ocupe esta silla libre
         stompClient.publish({
-          destination: "/app/unirse",
+          destination: "/app/sentarse", // 👈 Ojo acá: debe coincidir con tu backend
           body: JSON.stringify({
             mesaId: mesaId,
             nombreJugador: miNombreDeUsuario,
-            accion: "unirse",
+            accion: "sentarse",
           }),
         });
       } else {
@@ -129,8 +124,6 @@ export default function Juego() {
       const res = await fetch(url, { method: "POST" });
       const id = await res.text();
       setMesaId(id);
-
-      // 👇 Ya sabemos que vos sos el creador, así que te asignamos automáticamente
       setJugadorAsignado(miNombreDeUsuario);
     } catch (err) {
       alert("Error: ¿Está el server de Java prendido?");
@@ -142,25 +135,7 @@ export default function Juego() {
     else alert("Por favor, ingresá un ID de mesa válido.");
   };
 
-  const unirseComoJugador2 = () => {
-    // 1. Nos guardamos internamente que somos este jugador
-    setJugadorAsignado(miNombreDeUsuario);
-
-    // 2. Le mandamos el paquete a Java para que actualice la mesa de todos
-    if (stompClient && stompClient.connected) {
-      stompClient.publish({
-        destination: "/app/unirse",
-        body: JSON.stringify({
-          mesaId: mesaId,
-          nombreJugador: miNombreDeUsuario,
-          accion: "unirse", // Lo mandamos de relleno por si Java lo pide
-        }),
-      });
-    }
-  };
-
   const tirarCarta = async (indice) => {
-    // Validaciones: ¿Es mi turno? ¿Estamos en la etapa de tirar cartas?
     if (partida.estadoActual !== "ESPERANDO_CARTA") return;
     if (partida.turnoActual?.nombre !== jugadorAsignado) {
       alert("¡Pará un poco, no es tu turno!");
@@ -180,10 +155,6 @@ export default function Juego() {
   };
 
   const gritar = (accion) => {
-    console.log(
-      `Intentando gritar: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
-    );
-
     if (stompClient && stompClient.connected) {
       stompClient.publish({
         destination: "/app/cantar",
@@ -193,17 +164,10 @@ export default function Juego() {
           accion,
         }),
       });
-      console.log("Mensaje de grito enviado al servidor 🚀");
-    } else {
-      console.error("No hay conexión con el WebSocket :(");
     }
   };
 
   const responder = (accion) => {
-    console.log(
-      `Intentando responder: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
-    );
-
     if (stompClient && stompClient.connected) {
       stompClient.publish({
         destination: "/app/responder",
@@ -213,7 +177,6 @@ export default function Juego() {
           accion,
         }),
       });
-      console.log("Mensaje de respuesta enviado al servidor 🚀");
     }
   };
 
@@ -243,10 +206,8 @@ export default function Juego() {
         Truco Club - MESA ONLINE 🃏
       </h1>
 
-      {/* --- MENÚ DE ENTRADA --- */}
       {!mesaId ? (
         <div className="max-w-md mx-auto space-y-8">
-          {/* --- PANEL DE CONFIGURACIÓN Y CREACIÓN --- */}
           <div className="bg-neutral-800 p-6 rounded-xl border border-neutral-700 shadow-xl">
             <p className="mb-4 text-neutral-300 font-medium">
               Configuración de la mesa
@@ -305,7 +266,6 @@ export default function Juego() {
             </span>
           </div>
 
-          {/* --- MESA DE JUEGO PRINCIPAL --- */}
           {partida && jugadorAsignado && miJugador && rival && (
             <div className="w-full flex flex-col items-center">
               {/* ZONA RIVAL */}
@@ -314,7 +274,6 @@ export default function Juego() {
                   {rival.nombre} - Puntos:{" "}
                   <span className="text-white font-bold">{rival.puntos}</span>
                 </h3>
-                {/* Cartas jugadas por el rival */}
                 <div className="flex justify-center gap-4 h-32 items-end">
                   {rival.cartasJugadas.map((carta, index) => (
                     <div
@@ -328,7 +287,7 @@ export default function Juego() {
                 </div>
               </div>
 
-              {/* CENTRO DE LA MESA (Avisos de estado) */}
+              {/* CENTRO DE LA MESA */}
               <div className="w-full max-w-2xl h-24 bg-green-800 border-4 border-green-950 rounded-2xl flex flex-col items-center justify-center shadow-inner mb-4 relative overflow-hidden">
                 {partida.estadoActual === "ESPERANDO_JUGADORES" && (
                   <h2 className="text-yellow-300 font-bold animate-pulse">
@@ -355,7 +314,6 @@ export default function Juego() {
 
               {/* ZONA PROPIA */}
               <div className="w-full mt-4 flex flex-col items-center">
-                {/* Cartas jugadas por mí */}
                 <div className="flex justify-center gap-4 h-32 items-start mb-4">
                   {miJugador.cartasJugadas.map((carta, index) => (
                     <div
@@ -375,7 +333,6 @@ export default function Juego() {
                   </span>
                 </h3>
 
-                {/* Cartas en mano */}
                 <div className="flex justify-center gap-4 mb-8">
                   {miJugador.mano.map((carta, index) => (
                     <div
@@ -394,12 +351,11 @@ export default function Juego() {
                   ))}
                 </div>
 
-                {/* --- BOTONERA CONDICIONAL (TAILWIND) --- */}
+                {/* --- BOTONERA CONDICIONAL --- */}
                 <div className="h-20 flex items-center justify-center">
-                  {/* CASO A: Botones de turno normal */}
+                  {/* CASO A */}
                   {partida.estadoActual === "ESPERANDO_CARTA" && esMiTurno && (
                     <div className="flex gap-3">
-                      {/* --- BOTONES DE ENVIDO --- */}
                       {partida.manoActual === 1 && !partida.envidoCerrado && (
                         <>
                           <button
@@ -412,7 +368,7 @@ export default function Juego() {
                             onClick={() => gritar("real envido")}
                             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
                           >
-                            Real Envidoooo
+                            Real Envido
                           </button>
                           <button
                             onClick={() => gritar("falta envido")}
@@ -422,9 +378,6 @@ export default function Juego() {
                           </button>
                         </>
                       )}
-
-                      {/* --- BOTONES DE TRUCO (INTELIGENTES) --- */}
-                      {/* Solo muestro Truco si estamos en nivel 1 (nadie cantó) */}
                       {partida.puntosEnJuegoTruco === 1 && (
                         <button
                           onClick={() => gritar("truco")}
@@ -433,8 +386,6 @@ export default function Juego() {
                           Truco
                         </button>
                       )}
-
-                      {/* Solo muestro Retruco si estamos en nivel 2 Y yo tengo el quiero */}
                       {partida.puntosEnJuegoTruco === 2 &&
                         partida.quienTieneElQuieroTruco?.nombre ===
                           miJugador.nombre && (
@@ -445,8 +396,6 @@ export default function Juego() {
                             Retruco
                           </button>
                         )}
-
-                      {/* Solo muestro Vale Cuatro si estamos en nivel 3 Y yo tengo el quiero */}
                       {partida.puntosEnJuegoTruco === 3 &&
                         partida.quienTieneElQuieroTruco?.nombre ===
                           miJugador.nombre && (
@@ -457,7 +406,6 @@ export default function Juego() {
                             Vale Cuatro
                           </button>
                         )}
-
                       <button
                         onClick={() => gritar("irse_al_mazo")}
                         className="bg-neutral-700 hover:bg-neutral-600 px-4 py-2 rounded font-bold transition text-neutral-300 border border-neutral-600"
@@ -467,7 +415,7 @@ export default function Juego() {
                     </div>
                   )}
 
-                  {/* CASO B: Botones de respuesta a ENVIDO */}
+                  {/* CASO B */}
                   {partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
                     meTocaResponder && (
                       <div className="flex gap-3">
@@ -483,10 +431,6 @@ export default function Juego() {
                         >
                           No Quiero
                         </button>
-
-                        {/* Solución Error 1 y 3 (Envido infinito y botón faltante): 
-                          Solo mostramos "Envido" si los puntos en juego son menos de 4 (para cortar el Envido-Envido infinito)
-                          y si no cantaron Real ni Falta. */}
                         {partida.puntosEnJuegoEnvido < 4 &&
                           partida.ultimoGrito !== "REAL ENVIDO" &&
                           partida.ultimoGrito !== "FALTA ENVIDO" && (
@@ -497,8 +441,6 @@ export default function Juego() {
                               Envido
                             </button>
                           )}
-
-                        {/* Mostramos "Real Envido" a menos que ya hayan cantado Real Envido o Falta Envido */}
                         {partida.ultimoGrito !== "REAL ENVIDO" &&
                           partida.ultimoGrito !== "FALTA ENVIDO" && (
                             <button
@@ -508,8 +450,6 @@ export default function Juego() {
                               Real Envido
                             </button>
                           )}
-
-                        {/* "Falta Envido" siempre aparece a menos que ya hayan cantado Falta Envido */}
                         {partida.ultimoGrito !== "FALTA ENVIDO" && (
                           <button
                             onClick={() => responder("falta envido")}
@@ -521,7 +461,7 @@ export default function Juego() {
                       </div>
                     )}
 
-                  {/* CASO C: Botones de respuesta a TRUCO */}
+                  {/* CASO C */}
                   {partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" &&
                     meTocaResponder && (
                       <div className="flex gap-3">
@@ -537,8 +477,6 @@ export default function Juego() {
                         >
                           No Quiero
                         </button>
-
-                        {/* Solución Error 2 y 3: Escalera obligatoria de Truco */}
                         {partida.ultimoGrito === "TRUCO" && (
                           <button
                             onClick={() => responder("retruco")}
@@ -555,8 +493,6 @@ export default function Juego() {
                             Quiero Vale Cuatro
                           </button>
                         )}
-
-                        {/* Si cantaron VALE CUATRO, no se dibuja ningún botón extra, cortando el bucle */}
                       </div>
                     )}
                 </div>
