@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import { useLocation } from "react-router-dom";
@@ -116,6 +116,78 @@ export default function Juego() {
   ]);
 
   // ==========================================
+  // MEMORIA DE GLOBOS (Persistentes hasta jugar carta)
+  // ==========================================
+  const prevPartidaRef = useRef(null);
+  const [globoMemoria, setGloboMemoria] = useState(null);
+
+  useEffect(() => {
+    if (partida && prevPartidaRef.current) {
+      const prev = prevPartidaRef.current;
+
+      // 1. ¿Alguien jugó una carta? -> Pinchamos el globo
+      const cartasAntes =
+        prev.jugador1.cartasJugadas.length + prev.jugador2.cartasJugadas.length;
+      const cartasAhora =
+        partida.jugador1.cartasJugadas.length +
+        partida.jugador2.cartasJugadas.length;
+
+      if (cartasAhora > cartasAntes) {
+        setGloboMemoria(null);
+      }
+
+      // 2. ¿Alguien cantó un grito nuevo (Truco, Envido)? -> Borramos la memoria para que tome prioridad el grito actual
+      if (
+        partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
+        partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO"
+      ) {
+        setGloboMemoria(null);
+      }
+
+      // 3. ¿Alguien respondió (Quiero / No Quiero)? -> Guardamos la respuesta
+      if (
+        (prev.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
+          prev.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO") &&
+        partida.estadoActual !== "ESPERANDO_RESPUESTA_TRUCO" &&
+        partida.estadoActual !== "ESPERANDO_RESPUESTA_ENVIDO"
+      ) {
+        const autorRespuesta = prev.quienDebeResponder?.nombre;
+        let textoDeducido = "¡QUIERO!";
+
+        if (partida.estadoActual === "ENTRE_MANOS") {
+          textoDeducido = "NO QUIERO";
+        } else if (
+          prev.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
+          partida.estadoActual === "ESPERANDO_CARTA"
+        ) {
+          const puntosSumadosJ1 =
+            partida.jugador1.puntos - prev.jugador1.puntos;
+          const puntosSumadosJ2 =
+            partida.jugador2.puntos - prev.jugador2.puntos;
+          if (
+            (puntosSumadosJ1 > 0 &&
+              puntosSumadosJ1 < prev.puntosEnJuegoEnvido) ||
+            (puntosSumadosJ2 > 0 && puntosSumadosJ2 < prev.puntosEnJuegoEnvido)
+          ) {
+            textoDeducido = "NO QUIERO";
+          }
+        }
+
+        setGloboMemoria({ texto: textoDeducido, autor: autorRespuesta });
+      }
+
+      // 4. ¿Arrancó mano nueva? -> Limpiamos todo
+      if (
+        prev.estadoActual === "ENTRE_MANOS" &&
+        partida.estadoActual === "ESPERANDO_CARTA"
+      ) {
+        setGloboMemoria(null);
+      }
+    }
+    prevPartidaRef.current = partida;
+  }, [partida]);
+
+  // ==========================================
   // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
   // ==========================================
   const crearMesa = async () => {
@@ -187,8 +259,9 @@ export default function Juego() {
   let rival = null;
   let esMiTurno = false;
   let meTocaResponder = false;
-  let nombreDelQueGrito = null;
-  let gritoActivo = false;
+
+  let gritoA_Mostrar = null;
+  let autorGrito = null;
 
   if (partida && jugadorAsignado) {
     const soyJ1 = partida.jugador1.nombre === jugadorAsignado;
@@ -197,13 +270,20 @@ export default function Juego() {
 
     esMiTurno = partida.turnoActual?.nombre === jugadorAsignado;
     meTocaResponder = partida.quienDebeResponder?.nombre === jugadorAsignado;
-    if (
+
+    // Prioridad 1: Tenemos guardado un Quiero/No Quiero en la memoria
+    if (globoMemoria) {
+      gritoA_Mostrar = globoMemoria.texto;
+      autorGrito = globoMemoria.autor;
+    }
+    // Prioridad 2: Alguien cantó algo y estamos esperando que respondan
+    else if (
       partida.ultimoGrito &&
       (partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO")
     ) {
-      gritoActivo = true;
-      nombreDelQueGrito = meTocaResponder ? rival.nombre : miJugador.nombre;
+      gritoA_Mostrar = partida.ultimoGrito;
+      autorGrito = meTocaResponder ? rival.nombre : miJugador.nombre;
     }
   }
 
@@ -299,10 +379,10 @@ export default function Juego() {
                     <span className="text-white font-bold">{rival.puntos}</span>
                   </h3>
 
-                  {/* --- GLOBO DE CHAT DEL RIVAL --- */}
-                  {gritoActivo && nombreDelQueGrito === rival.nombre && (
-                    <div className="absolute top-1/2 left-full -translate-y-1/2 ml-4 w-max bg-white text-slate-900 px-4 py-2 rounded-2xl rounded-tl-none font-black shadow-xl animate-bounce z-10 border-2 border-slate-300">
-                      🗣️ {partida.ultimoGrito}
+                  {/* --- GLOBO DE CHAT DEL RIVAL (Izquierda) --- */}
+                  {gritoA_Mostrar && autorGrito === rival.nombre && (
+                    <div className="absolute top-1/2 right-full -translate-y-1/2 mr-4 w-max bg-white text-slate-900 px-4 py-2 rounded-2xl rounded-tr-none font-black shadow-xl animate-bounce z-10 border-2 border-slate-300">
+                      🗣️ {gritoA_Mostrar}
                     </div>
                   )}
                 </div>
@@ -360,10 +440,10 @@ export default function Juego() {
                     </span>
                   </h3>
 
-                  {/* --- GLOBO DE CHAT TUYO --- */}
-                  {gritoActivo && nombreDelQueGrito === miJugador.nombre && (
-                    <div className="absolute top-1/2 right-full -translate-y-1/2 mr-4 w-max bg-green-500 text-white px-4 py-2 rounded-2xl rounded-tr-none font-black shadow-xl animate-bounce z-10 border-2 border-green-400">
-                      🗣️ {partida.ultimoGrito}
+                  {/* --- GLOBO DE CHAT TUYO (Derecha) --- */}
+                  {gritoA_Mostrar && autorGrito === miJugador.nombre && (
+                    <div className="absolute top-1/2 left-full -translate-y-1/2 ml-4 w-max bg-green-500 text-white px-4 py-2 rounded-2xl rounded-tl-none font-black shadow-xl animate-bounce z-10 border-2 border-green-400">
+                      🗣️ {gritoA_Mostrar}
                     </div>
                   )}
                 </div>
