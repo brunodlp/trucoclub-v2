@@ -94,11 +94,11 @@ export default function Juego() {
         setJugadorAsignado(miNombreDeUsuario);
 
         stompClient.publish({
-          destination: "/app/sentarse", // 👈 Ojo acá: debe coincidir con tu backend
+          destination: "/app/unirse", // 👈 Ojo acá: debe coincidir con tu backend
           body: JSON.stringify({
             mesaId: mesaId,
             nombreJugador: miNombreDeUsuario,
-            accion: "sentarse",
+            accion: "unirse",
           }),
         });
       } else {
