@@ -12,6 +12,7 @@ export default function Juego() {
   const [isConnected, setIsConnected] = useState(false);
   const location = useLocation();
   const miNombreDeUsuario = location.state?.usuarioLogueado || "Invitado";
+  const [puntosMesa, setPuntosMesa] = useState(30); // 👈 NUEVO ESTADO
 
   // ==========================================
   // 1. CONEXIÓN INICIAL Y WEBSOCKETS
@@ -124,8 +125,7 @@ export default function Juego() {
   // ==========================================
   const crearMesa = async () => {
     try {
-      // 👇 Ahora le mandamos tu nombre real en vez de "Nacho"
-      const url = `https://trucoclub-backend.onrender.com/api/truco/nueva?j1=${miNombreDeUsuario}&j2=Rival&puntos=30`;
+      const url = `https://trucoclub-backend.onrender.com/api/truco/nueva?j1=${miNombreDeUsuario}&j2=Rival&puntos=${puntosMesa}`;
       const res = await fetch(url, { method: "POST" });
       const id = await res.text();
       setMesaId(id);
@@ -246,12 +246,34 @@ export default function Juego() {
       {/* --- MENÚ DE ENTRADA --- */}
       {!mesaId ? (
         <div className="max-w-md mx-auto space-y-8">
-          <button
-            onClick={crearMesa}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-colors text-lg"
-          >
-            Crear Nueva Mesa
-          </button>
+          {/* --- PANEL DE CONFIGURACIÓN Y CREACIÓN --- */}
+          <div className="bg-neutral-800 p-6 rounded-xl border border-neutral-700 shadow-xl">
+            <p className="mb-4 text-neutral-300 font-medium">
+              Configuración de la mesa
+            </p>
+
+            <div className="flex justify-center gap-4 mb-6">
+              <button
+                onClick={() => setPuntosMesa(15)}
+                className={`px-6 py-2 rounded-lg font-bold transition-all ${puntosMesa === 15 ? "bg-orange-600 text-white shadow-lg shadow-orange-900/50 scale-105" : "bg-neutral-700 text-neutral-400 hover:bg-neutral-600"}`}
+              >
+                A 15 (Malas)
+              </button>
+              <button
+                onClick={() => setPuntosMesa(30)}
+                className={`px-6 py-2 rounded-lg font-bold transition-all ${puntosMesa === 30 ? "bg-orange-600 text-white shadow-lg shadow-orange-900/50 scale-105" : "bg-neutral-700 text-neutral-400 hover:bg-neutral-600"}`}
+              >
+                A 30 (Buenas)
+              </button>
+            </div>
+
+            <button
+              onClick={crearMesa}
+              className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-colors text-lg"
+            >
+              Crear Nueva Mesa
+            </button>
+          </div>
 
           <div className="bg-neutral-800 p-6 rounded-xl border border-neutral-700 shadow-xl">
             <p className="mb-4 text-neutral-300 font-medium">
