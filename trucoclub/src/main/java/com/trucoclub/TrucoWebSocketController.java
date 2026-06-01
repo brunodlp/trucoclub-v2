@@ -74,4 +74,14 @@ public class TrucoWebSocketController {
             messagingTemplate.convertAndSend(destination, partidaActualizada);
         }
     }
+
+    @MessageMapping("/unirse")
+    public void unirseAMesa(MensajeAccion mensaje) {
+        Partida partidaActualizada = trucoService.renombrarJugador2(mensaje.getMesaId(), mensaje.getNombreJugador());
+
+        if(partidaActualizada != null) {
+            String destination = "/topic/partida/" + mensaje.getMesaId();
+            messagingTemplate.convertAndSend(destination, partidaActualizada);
+        }
+    }
 }

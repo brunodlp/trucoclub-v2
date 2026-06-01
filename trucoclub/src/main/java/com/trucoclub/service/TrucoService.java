@@ -1,5 +1,6 @@
 package com.trucoclub.service;
 
+import com.trucoclub.model.EstadoJuego;
 import com.trucoclub.model.MensajeAccion;
 import com.trucoclub.model.Partida;
 import com.trucoclub.model.Jugador;
@@ -93,5 +94,21 @@ public class TrucoService {
         if (partida.getJugador1().getNombre().equals(nombre)) return partida.getJugador1();
         if (partida.getJugador2().getNombre().equals(nombre)) return partida.getJugador2();
         return null;
+    }
+
+    public Partida renombrarJugador2(String mesaId, String nuevoNombre) {
+        // Buscamos la mesa con el método que ya tenés
+        Partida partida = obtenerPartida(mesaId);
+
+        if (partida != null) {
+            // Le cambiamos el nombre al Jugador 2
+            partida.getJugador2().setNombre(nuevoNombre);
+
+            // Opcional y recomendado: Si la mesa estaba esperando, la arrancamos
+            if (partida.getEstadoActual() == EstadoJuego.ESPERANDO_JUGADORES) {
+                partida.empezarRonda();
+            }
+        }
+        return partida;
     }
 }

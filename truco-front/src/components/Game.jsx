@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import { useLocation } from "react-router-dom";
 
 export default function Juego() {
   const [mesaId, setMesaId] = useState(null);
@@ -8,6 +9,8 @@ export default function Juego() {
   const [partida, setPartida] = useState(null);
   const [stompClient, setStompClient] = useState(null);
   const [jugadorAsignado, setJugadorAsignado] = useState(null);
+  const location = useLocation();
+  const miNombreDeUsuario = location.state?.usuarioLogueado || "Invitado";
 
   // ==========================================
   // 1. CONEXIÓN INICIAL Y WEBSOCKETS
@@ -73,17 +76,49 @@ export default function Juego() {
   }, [partida?.estadoActual, stompClient, mesaId]);
 
   // ==========================================
+  // AUTO-ASIGNADOR DE JUGADORES
+  // ==========================================
+  useEffect(() => {
+    // Solo actuamos si la partida ya cargó, si no tenemos silla, y si el cable WS está conectado
+    if (partida && !jugadorAsignado && stompClient && stompClient.connected) {
+      if (partida.jugador1.nombre === miNombreDeUsuario) {
+        // CASO 1: Soy el Jugador 1 (Me reconoció)
+        setJugadorAsignado(miNombreDeUsuario);
+      } else if (partida.jugador2.nombre === miNombreDeUsuario) {
+        // CASO 2: Soy el Jugador 2 (Ya estaba en la mesa y recargué la página)
+        setJugadorAsignado(miNombreDeUsuario);
+      } else if (partida.jugador2.nombre === "Rival") {
+        // CASO 3: El asiento 2 está libre (Dice "Rival"). ¡Me lo apropio!
+        setJugadorAsignado(miNombreDeUsuario);
+        stompClient.publish({
+          destination: "/app/sentarse",
+          body: JSON.stringify({
+            mesaId: mesaId,
+            nombreJugador: miNombreDeUsuario,
+            accion: "sentarse",
+          }),
+        });
+      } else {
+        // CASO 4: Hay 2 personas distintas jugando. ¡La mesa está llena!
+        alert("¡Mesa llena! Ya hay dos personas jugando acá.");
+        setMesaId(null); // Lo pateamos a la pantalla principal
+      }
+    }
+  }, [partida, jugadorAsignado, stompClient, mesaId, miNombreDeUsuario]);
+
+  // ==========================================
   // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
   // ==========================================
   const crearMesa = async () => {
     try {
-      const res = await fetch(
-        "https://trucoclub-backend.onrender.com/api/truco/nueva?j1=Nacho&j2=IA&puntos=30",
-        { method: "POST" },
-      );
+      // 👇 Ahora le mandamos tu nombre real en vez de "Nacho"
+      const url = `https://trucoclub-backend.onrender.com/api/truco/nueva?j1=${miNombreDeUsuario}&j2=Rival&puntos=30`;
+      const res = await fetch(url, { method: "POST" });
       const id = await res.text();
       setMesaId(id);
-      setJugadorAsignado("Nacho");
+
+      // 👇 Ya sabemos que vos sos el creador, así que te asignamos automáticamente
+      setJugadorAsignado(miNombreDeUsuario);
     } catch (err) {
       alert("Error: ¿Está el server de Java prendido?");
     }
@@ -92,6 +127,23 @@ export default function Juego() {
   const unirseMesa = () => {
     if (inputMesaId.trim() !== "") setMesaId(inputMesaId);
     else alert("Por favor, ingresá un ID de mesa válido.");
+  };
+
+  const unirseComoJugador2 = () => {
+    // 1. Nos guardamos internamente que somos este jugador
+    setJugadorAsignado(miNombreDeUsuario);
+
+    // 2. Le mandamos el paquete a Java para que actualice la mesa de todos
+    if (stompClient && stompClient.connected) {
+      stompClient.publish({
+        destination: "/app/unirse",
+        body: JSON.stringify({
+          mesaId: mesaId,
+          nombreJugador: miNombreDeUsuario,
+          accion: "unirse", // Lo mandamos de relleno por si Java lo pide
+        }),
+      });
+    }
   };
 
   const tirarCarta = async (indice) => {
@@ -217,29 +269,6 @@ export default function Juego() {
               {mesaId}
             </span>
           </div>
-
-          {/* --- SELECCIÓN DE JUGADOR --- */}
-          {partida && !jugadorAsignado && (
-            <div className="bg-neutral-800 p-8 rounded-2xl border border-neutral-700 shadow-2xl max-w-sm w-full my-10">
-              <h3 className="text-xl font-bold mb-6">
-                ¿Quién sos en esta pestaña?
-              </h3>
-              <div className="flex flex-col gap-4">
-                <button
-                  onClick={() => setJugadorAsignado(partida.jugador1.nombre)}
-                  className="bg-green-600 hover:bg-green-500 font-bold py-3 rounded-lg transition-colors"
-                >
-                  {partida.jugador1.nombre}
-                </button>
-                <button
-                  onClick={() => setJugadorAsignado(partida.jugador2.nombre)}
-                  className="bg-red-600 hover:bg-red-500 font-bold py-3 rounded-lg transition-colors"
-                >
-                  {partida.jugador2.nombre}
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* --- MESA DE JUEGO PRINCIPAL --- */}
           {partida && jugadorAsignado && miJugador && rival && (

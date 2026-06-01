@@ -28,8 +28,14 @@ export default function Login() {
           texto: "¡Bienvenido al club! Llevándote a la mesa... 🃏",
           tipo: "exito",
         });
-        // Espera 1.5 segundos para mostrar el mensaje lindo y te redirige
-        setTimeout(() => navigate("/juego"), 1500);
+        // Espera 1.5 segundos para mostrar el mensaje lindo y te redirige pasando el username
+        setTimeout(
+          () =>
+            navigate("/juego", {
+              state: { usuarioLogueado: formData.username },
+            }),
+          1500,
+        );
       } else {
         setMensaje({ texto: data, tipo: "error" });
       }
