@@ -98,11 +98,11 @@ export default function Juego() {
 
         // Le avisamos a Java que ocupe esta silla libre
         stompClient.publish({
-          destination: "/app/sentarse",
+          destination: "/app/unirse",
           body: JSON.stringify({
             mesaId: mesaId,
             nombreJugador: miNombreDeUsuario,
-            accion: "sentarse",
+            accion: "unirse",
           }),
         });
       } else {
