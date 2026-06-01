@@ -187,6 +187,8 @@ export default function Juego() {
   let rival = null;
   let esMiTurno = false;
   let meTocaResponder = false;
+  let nombreDelQueGrito = null;
+  let gritoActivo = false;
 
   if (partida && jugadorAsignado) {
     const soyJ1 = partida.jugador1.nombre === jugadorAsignado;
@@ -195,6 +197,14 @@ export default function Juego() {
 
     esMiTurno = partida.turnoActual?.nombre === jugadorAsignado;
     meTocaResponder = partida.quienDebeResponder?.nombre === jugadorAsignado;
+    if (
+      partida.ultimoGrito &&
+      (partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
+        partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO")
+    ) {
+      gritoActivo = true;
+      nombreDelQueGrito = meTocaResponder ? rival.nombre : miJugador.nombre;
+    }
   }
 
   // ==========================================
@@ -283,10 +293,19 @@ export default function Juego() {
             <div className="w-full flex flex-col items-center">
               {/* ZONA RIVAL */}
               <div className="w-full mb-4 flex flex-col items-center">
-                <h3 className="text-neutral-400 font-medium mb-2 uppercase tracking-widest text-sm">
-                  {rival.nombre} - Puntos:{" "}
-                  <span className="text-white font-bold">{rival.puntos}</span>
-                </h3>
+                <div className="relative inline-block mb-2">
+                  <h3 className="text-neutral-400 font-medium uppercase tracking-widest text-sm">
+                    {rival.nombre} - Puntos:{" "}
+                    <span className="text-white font-bold">{rival.puntos}</span>
+                  </h3>
+
+                  {/* --- GLOBO DE CHAT DEL RIVAL --- */}
+                  {gritoActivo && nombreDelQueGrito === rival.nombre && (
+                    <div className="absolute top-1/2 left-full -translate-y-1/2 ml-4 w-max bg-white text-slate-900 px-4 py-2 rounded-2xl rounded-tl-none font-black shadow-xl animate-bounce z-10 border-2 border-slate-300">
+                      🗣️ {partida.ultimoGrito}
+                    </div>
+                  )}
+                </div>
                 <div className="flex justify-center gap-4 h-32 items-end">
                   {rival.cartasJugadas.map((carta, index) => (
                     <div
@@ -300,7 +319,7 @@ export default function Juego() {
                 </div>
               </div>
 
-              {/* CENTRO DE LA MESA */}
+              {/* CENTRO DE LA MESA (Avisos de estado) */}
               <div className="w-full max-w-2xl h-24 bg-green-800 border-4 border-green-950 rounded-2xl flex flex-col items-center justify-center shadow-inner mb-4 relative overflow-hidden">
                 {partida.estadoActual === "ESPERANDO_JUGADORES" && (
                   <h2 className="text-yellow-300 font-bold animate-pulse">
@@ -317,12 +336,7 @@ export default function Juego() {
                     🏆 ¡PARTIDO FINALIZADO! 🏆
                   </h1>
                 )}
-                {partida.ultimoGrito &&
-                  partida.estadoActual !== "ENTRE_MANOS" && (
-                    <h2 className="text-white font-bold text-lg bg-black/50 px-4 py-1 rounded-full uppercase tracking-wider">
-                      🗣️ {partida.ultimoGrito}
-                    </h2>
-                  )}
+                {/* 👈 ACÁ BORRAMOS EL ULTIMOGRITO VIEJO */}
               </div>
 
               {/* ZONA PROPIA */}
@@ -338,13 +352,21 @@ export default function Juego() {
                     </div>
                   ))}
                 </div>
+                <div className="relative inline-block mb-4 mt-2">
+                  <h3 className="text-neutral-400 font-medium uppercase tracking-widest text-sm">
+                    Vos ({miJugador.nombre}) - Puntos:{" "}
+                    <span className="text-green-400 font-bold">
+                      {miJugador.puntos}
+                    </span>
+                  </h3>
 
-                <h3 className="text-neutral-400 font-medium mb-4 uppercase tracking-widest text-sm">
-                  Vos ({miJugador.nombre}) - Puntos:{" "}
-                  <span className="text-green-400 font-bold">
-                    {miJugador.puntos}
-                  </span>
-                </h3>
+                  {/* --- GLOBO DE CHAT TUYO --- */}
+                  {gritoActivo && nombreDelQueGrito === miJugador.nombre && (
+                    <div className="absolute top-1/2 right-full -translate-y-1/2 mr-4 w-max bg-green-500 text-white px-4 py-2 rounded-2xl rounded-tr-none font-black shadow-xl animate-bounce z-10 border-2 border-green-400">
+                      🗣️ {partida.ultimoGrito}
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex justify-center gap-4 mb-8">
                   {miJugador.mano.map((carta, index) => (
