@@ -201,22 +201,21 @@ export default function Juego() {
             const id = Date.now();
             peliculaRef.current = id;
 
-            // Escena 1: El ¡QUIERO!
+            // Escena 1: El ¡QUIERO! (lo dice el que fue desafiado)
             setGlobosActivos({ [autorRespuesta]: "¡QUIERO!" });
+
+            // Esperamos 1.5 segundos para que se lea el "Quiero"
             await new Promise((resolve) => setTimeout(resolve, 1500));
 
-            // Escena 2: El MANO canta primero sus puntos (borra el quiero del otro)
-            if (peliculaRef.current !== id) return;
-            setGlobosActivos({ [elMano.nombre]: `Tengo ${ptsMano}` });
-            await new Promise((resolve) => setTimeout(resolve, 2500));
-
-            // Escena 3: El PIE responde inteligentemente y los dos globos quedan activos
+            // Escena 2: ¡LOS DOS CANTAN AL MISMO TIEMPO!
             if (peliculaRef.current !== id) return;
 
             let respuestaPie = manoGana
               ? "Son buenas"
               : `${ptsPie} son mejores`;
 
+            // Al inyectar los dos nombres a la vez en el mismo setGlobosActivos,
+            // React dibuja ambos globos exactamente en el mismo fotograma.
             setGlobosActivos({
               [elMano.nombre]: `Tengo ${ptsMano}`,
               [elPie.nombre]: respuestaPie,
