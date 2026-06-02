@@ -143,34 +143,33 @@ export default function Juego() {
   // ==========================================
   // MEMORIA DE GLOBOS Y PELÍCULA DEL ENVIDO 🍿
   // ==========================================
+  // Cambiamos a globosActivos (que es un objeto vacío)
   const prevPartidaRef = useRef(null);
-  const [globoMemoria, setGloboMemoria] = useState(null);
-  const [secuenciaDialogo, setSecuenciaDialogo] = useState([]);
-  // ==========================================
-  // EFECTO 1: DETECTAR CAMBIOS Y ARMAR EL GUION
-  // ==========================================
+  const [globosActivos, setGlobosActivos] = useState({});
+  const peliculaRef = useRef(0);
+
   useEffect(() => {
     if (partida && prevPartidaRef.current) {
       const prev = prevPartidaRef.current;
 
-      // 1. ¿Alguien jugó una carta? -> Cortamos la película
+      // 1. ¿Jugaron carta? -> Limpiamos la mesa
       const cartasAntes =
         prev.jugador1.cartasJugadas.length + prev.jugador2.cartasJugadas.length;
       const cartasAhora =
         partida.jugador1.cartasJugadas.length +
         partida.jugador2.cartasJugadas.length;
       if (cartasAhora > cartasAntes) {
-        setGloboMemoria(null);
-        setSecuenciaDialogo([]);
+        peliculaRef.current = 0;
+        setGlobosActivos({});
       }
 
-      // 2. ¿Grito nuevo? -> Limpiamos memoria
+      // 2. ¿Grito nuevo? -> Limpiamos
       if (
         partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO"
       ) {
-        setGloboMemoria(null);
-        setSecuenciaDialogo([]);
+        peliculaRef.current = 0;
+        setGlobosActivos({});
       }
 
       // 3. SECUENCIA DE RESPUESTA AL ENVIDO
@@ -187,34 +186,41 @@ export default function Juego() {
           ptsGanadosJ1 === puntosEnJuego || ptsGanadosJ2 === puntosEnJuego;
 
         if (!fueQuiero) {
-          setGloboMemoria({ texto: "NO QUIERO", autor: autorRespuesta });
+          setGlobosActivos({ [autorRespuesta]: "NO QUIERO" });
         } else {
-          const ptsJ1 = calcularEnvidoReact(partida.jugador1);
-          const ptsJ2 = calcularEnvidoReact(partida.jugador2);
+          const elMano = partida.mano;
+          const elPie =
+            partida.mano.nombre === partida.jugador1.nombre
+              ? partida.jugador2
+              : partida.jugador1;
 
-          const j1Gano = ptsGanadosJ1 > 0;
-          const ganador = j1Gano ? partida.jugador1 : partida.jugador2;
-          const perdedor = j1Gano ? partida.jugador2 : partida.jugador1;
-          const puntosGanador = j1Gano ? ptsJ1 : ptsJ2;
-          const puntosPerdedor = j1Gano ? ptsJ2 : ptsJ1;
+          const ptsMano = calcularEnvidoReact(elMano);
+          const ptsPie = calcularEnvidoReact(elPie);
+          const manoGana = ptsMano >= ptsPie;
 
-          // 🎬 Armamos el guion para que React lo reproduzca de forma segura
-          setSecuenciaDialogo([
-            { delay: 0, texto: "¡QUIERO!", autor: autorRespuesta },
-            {
-              delay: 1500,
-              texto: `Tengo ${puntosPerdedor}`,
-              autor: perdedor.nombre,
-            },
-            {
-              delay: 4000,
-              texto:
-                puntosGanador === puntosPerdedor
-                  ? "Son buenas, gano por ser mano"
-                  : `${puntosGanador} son mejores`,
-              autor: ganador.nombre,
-            },
-          ]);
+          const reproducirPelicula = async () => {
+            const id = Date.now();
+            peliculaRef.current = id;
+
+            // Escena 1: El ¡QUIERO!
+            setGlobosActivos({ [autorRespuesta]: "¡QUIERO!" });
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+
+            // Escena 2: ¡LOS DOS GLOBOS A LA VEZ!
+            if (peliculaRef.current !== id) return;
+
+            let respuestaPie = manoGana
+              ? "Son buenas"
+              : `${ptsPie} son mejores`;
+
+            // Le pasamos un diccionario con los dos globos simultáneos
+            setGlobosActivos({
+              [elMano.nombre]: `Tengo ${ptsMano}`,
+              [elPie.nombre]: respuestaPie,
+            });
+          };
+
+          reproducirPelicula();
         }
       }
 
@@ -224,20 +230,23 @@ export default function Juego() {
         partida.estadoActual !== "ESPERANDO_RESPUESTA_TRUCO"
       ) {
         const autorRespuesta = prev.quienDebeResponder?.nombre;
-        if (partida.estadoActual === "ENTRE_MANOS") {
-          setGloboMemoria({ texto: "NO QUIERO", autor: autorRespuesta });
+        if (
+          partida.estadoActual === "ENTRE_MANOS" ||
+          partida.estadoActual === "TERMINADO"
+        ) {
+          setGlobosActivos({ [autorRespuesta]: "NO QUIERO" });
         } else {
-          setGloboMemoria({ texto: "¡QUIERO!", autor: autorRespuesta });
+          setGlobosActivos({ [autorRespuesta]: "¡QUIERO!" });
         }
       }
 
-      // 5. ¿Arrancó mano nueva? -> Limpiamos todo
+      // 5. ¿Arrancó mano nueva? -> Limpiamos
       if (
         prev.estadoActual === "ENTRE_MANOS" &&
         partida.estadoActual === "ESPERANDO_CARTA"
       ) {
-        setGloboMemoria(null);
-        setSecuenciaDialogo([]);
+        peliculaRef.current = 0;
+        setGlobosActivos({});
       }
     }
     prevPartidaRef.current = partida;
@@ -325,7 +334,6 @@ export default function Juego() {
       });
     }
   };
-
   // ==========================================
   // 4. EXTRACCIÓN DE DATOS PARA DIBUJAR
   // ==========================================
@@ -334,8 +342,9 @@ export default function Juego() {
   let esMiTurno = false;
   let meTocaResponder = false;
 
-  let gritoA_Mostrar = null;
-  let autorGrito = null;
+  // Variables individuales para cada globo
+  let miGlobo = null;
+  let globoRival = null;
 
   if (partida && jugadorAsignado) {
     const soyJ1 = partida.jugador1.nombre === jugadorAsignado;
@@ -345,19 +354,23 @@ export default function Juego() {
     esMiTurno = partida.turnoActual?.nombre === jugadorAsignado;
     meTocaResponder = partida.quienDebeResponder?.nombre === jugadorAsignado;
 
-    // Prioridad 1: Tenemos guardado un Quiero/No Quiero en la memoria
-    if (globoMemoria) {
-      gritoA_Mostrar = globoMemoria.texto;
-      autorGrito = globoMemoria.autor;
+    // ¿Hay globos activos en la memoria?
+    if (Object.keys(globosActivos).length > 0) {
+      miGlobo = globosActivos[miJugador.nombre];
+      globoRival = globosActivos[rival.nombre];
     }
-    // Prioridad 2: Alguien cantó algo y estamos esperando que respondan
+    // Si no hay memoria pero alguien gritó algo fijo (Truco/Envido)
     else if (
       partida.ultimoGrito &&
       (partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO")
     ) {
-      gritoA_Mostrar = partida.ultimoGrito;
-      autorGrito = meTocaResponder ? rival.nombre : miJugador.nombre;
+      const autorGrito = meTocaResponder ? rival.nombre : miJugador.nombre;
+      if (autorGrito === miJugador.nombre) {
+        miGlobo = partida.ultimoGrito;
+      } else {
+        globoRival = partida.ultimoGrito;
+      }
     }
   }
 
