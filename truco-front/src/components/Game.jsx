@@ -151,18 +151,32 @@ export default function Juego() {
     if (partida && prevPartidaRef.current) {
       const prev = prevPartidaRef.current;
 
-      // 1. ¿Jugaron carta? -> Limpiamos la mesa
       const cartasAntes =
         prev.jugador1.cartasJugadas.length + prev.jugador2.cartasJugadas.length;
       const cartasAhora =
         partida.jugador1.cartasJugadas.length +
         partida.jugador2.cartasJugadas.length;
+
+      // 1. ¿Jugaron carta? -> Limpiamos los globos porque sigue el juego
       if (cartasAhora > cartasAntes) {
         peliculaRef.current = 0;
         setGlobosActivos({});
       }
+      // 1.5. ¿ALGUIEN SE FUE AL MAZO?
+      // (Aplica para la mano 1, 2 o 3. Si la mano terminó de golpe y nadie tiró carta, alguien se rindió)
+      else if (
+        prev.estadoActual === "ESPERANDO_CARTA" &&
+        (partida.estadoActual === "ENTRE_MANOS" ||
+          partida.estadoActual === "TERMINADO")
+      ) {
+        const autorMazo = prev.turnoActual?.nombre;
+        if (autorMazo) {
+          peliculaRef.current = 0; // Cortamos cualquier otra película que esté sonando
+          setGlobosActivos({ [autorMazo]: "Me voy al mazo 🏳️" });
+        }
+      }
 
-      // 2. ¿Grito nuevo? -> Limpiamos
+      // 2. ¿Grito nuevo (Truco/Envido)? -> Limpiamos
       if (
         partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" ||
         partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO"
@@ -201,21 +215,17 @@ export default function Juego() {
             const id = Date.now();
             peliculaRef.current = id;
 
-            // Escena 1: El ¡QUIERO! (lo dice el que fue desafiado)
+            // Escena 1: El ¡QUIERO!
             setGlobosActivos({ [autorRespuesta]: "¡QUIERO!" });
-
-            // Esperamos 1.5 segundos para que se lea el "Quiero"
             await new Promise((resolve) => setTimeout(resolve, 1500));
 
-            // Escena 2: ¡LOS DOS CANTAN AL MISMO TIEMPO!
+            // Escena 2: ¡LOS DOS CANTAN LOS TANTOS A LA VEZ!
             if (peliculaRef.current !== id) return;
 
             let respuestaPie = manoGana
               ? "Son buenas"
               : `${ptsPie} son mejores`;
 
-            // Al inyectar los dos nombres a la vez en el mismo setGlobosActivos,
-            // React dibuja ambos globos exactamente en el mismo fotograma.
             setGlobosActivos({
               [elMano.nombre]: `Tengo ${ptsMano}`,
               [elPie.nombre]: respuestaPie,
@@ -242,7 +252,7 @@ export default function Juego() {
         }
       }
 
-      // 5. ¿Arrancó mano nueva? -> Limpiamos
+      // 5. ¿Arrancó mano nueva repatiendo cartas? -> Limpiamos todo
       if (
         prev.estadoActual === "ENTRE_MANOS" &&
         partida.estadoActual === "ESPERANDO_CARTA"
