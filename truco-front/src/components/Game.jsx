@@ -104,7 +104,7 @@ export default function Juego() {
   }, [partida?.estadoActual, stompClient, mesaId]);
 
   // ==========================================
-  // AUTO-ASIGNADOR DE JUGADORES (Corregido y Único)
+  // AUTO-ASIGNADOR DE JUGADORES
   // ==========================================
   useEffect(() => {
     if (partida && !jugadorAsignado && stompClient && isConnected) {
@@ -119,7 +119,7 @@ export default function Juego() {
         setJugadorAsignado(miNombreDeUsuario);
 
         stompClient.publish({
-          destination: "/app/unirse", // 👈 Ojo acá: debe coincidir con tu backend
+          destination: "/app/unirse",
           body: JSON.stringify({
             mesaId: mesaId,
             nombreJugador: miNombreDeUsuario,
@@ -141,9 +141,8 @@ export default function Juego() {
   ]);
 
   // ==========================================
-  // MEMORIA DE GLOBOS Y PELÍCULA DEL ENVIDO 🍿
+  // MEMORIA DE GLOBOS Y PELÍCULA DEL ENVIDO 🍿 (INMORTAL)
   // ==========================================
-  // Cambiamos a globosActivos (que es un objeto vacío)
   const prevPartidaRef = useRef(null);
   const [globosActivos, setGlobosActivos] = useState({});
   const peliculaRef = useRef(0);
@@ -206,14 +205,18 @@ export default function Juego() {
             setGlobosActivos({ [autorRespuesta]: "¡QUIERO!" });
             await new Promise((resolve) => setTimeout(resolve, 1500));
 
-            // Escena 2: ¡LOS DOS GLOBOS A LA VEZ!
+            // Escena 2: El MANO canta primero sus puntos (borra el quiero del otro)
+            if (peliculaRef.current !== id) return;
+            setGlobosActivos({ [elMano.nombre]: `Tengo ${ptsMano}` });
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+
+            // Escena 3: El PIE responde inteligentemente y los dos globos quedan activos
             if (peliculaRef.current !== id) return;
 
             let respuestaPie = manoGana
               ? "Son buenas"
               : `${ptsPie} son mejores`;
 
-            // Le pasamos un diccionario con los dos globos simultáneos
             setGlobosActivos({
               [elMano.nombre]: `Tengo ${ptsMano}`,
               [elPie.nombre]: respuestaPie,
@@ -251,24 +254,6 @@ export default function Juego() {
     }
     prevPartidaRef.current = partida;
   }, [partida]);
-
-  // ==========================================
-  // EFECTO 2: EL DIRECTOR DE CINE (Reproduce el guion)
-  // ==========================================
-  useEffect(() => {
-    // Si no hay guion, no hacemos nada
-    if (secuenciaDialogo.length === 0) return;
-
-    // Disparamos todos los timers juntos basados en su "delay"
-    const timers = secuenciaDialogo.map((dialogo) => {
-      return setTimeout(() => {
-        setGloboMemoria({ texto: dialogo.texto, autor: dialogo.autor });
-      }, dialogo.delay);
-    });
-
-    // ¡ESTO ARREGLA EL BUG! Si algo interrumpe, limpiamos la basura.
-    return () => timers.forEach(clearTimeout);
-  }, [secuenciaDialogo]);
 
   // ==========================================
   // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
@@ -334,6 +319,7 @@ export default function Juego() {
       });
     }
   };
+
   // ==========================================
   // 4. EXTRACCIÓN DE DATOS PARA DIBUJAR
   // ==========================================
@@ -467,9 +453,9 @@ export default function Juego() {
                   </h3>
 
                   {/* --- GLOBO DE CHAT DEL RIVAL (Izquierda) --- */}
-                  {gritoA_Mostrar && autorGrito === rival.nombre && (
+                  {globoRival && (
                     <div className="absolute top-1/2 right-full -translate-y-1/2 mr-4 w-max bg-white text-slate-900 px-4 py-2 rounded-2xl rounded-tr-none font-black shadow-xl animate-bounce z-10 border-2 border-slate-300">
-                      🗣️ {gritoA_Mostrar}
+                      🗣️ {globoRival}
                     </div>
                   )}
                 </div>
@@ -503,7 +489,6 @@ export default function Juego() {
                     🏆 ¡PARTIDO FINALIZADO! 🏆
                   </h1>
                 )}
-                {/* 👈 ACÁ BORRAMOS EL ULTIMOGRITO VIEJO */}
               </div>
 
               {/* ZONA PROPIA */}
@@ -528,9 +513,9 @@ export default function Juego() {
                   </h3>
 
                   {/* --- GLOBO DE CHAT TUYO (Derecha) --- */}
-                  {gritoA_Mostrar && autorGrito === miJugador.nombre && (
+                  {miGlobo && (
                     <div className="absolute top-1/2 left-full -translate-y-1/2 ml-4 w-max bg-green-500 text-white px-4 py-2 rounded-2xl rounded-tl-none font-black shadow-xl animate-bounce z-10 border-2 border-green-400">
-                      🗣️ {gritoA_Mostrar}
+                      🗣️ {miGlobo}
                     </div>
                   )}
                 </div>
