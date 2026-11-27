@@ -18,8 +18,9 @@ public class Usuario {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
-    private String password; // Acá guardaremos la contraseña encriptada
+    /** El usuario de Supabase Auth (auth.users.id) al que pertenece este perfil. */
+    @Column(name = "auth_id", unique = true)
+    private java.util.UUID authId;
 
     private LocalDateTime fechaRegistro = LocalDateTime.now();
 
@@ -31,6 +32,10 @@ public class Usuario {
 
     // NUEVO: foto de perfil (por ahora vacía; después se podrá subir)
     private String fotoUrl;
+
+    /** DNI (solo números). Sirve para verificar que depósitos y retiros sean del titular. Uno por cuenta. */
+    @Column(length = 8, unique = true)
+    private String dni;
 
     // NUEVO: rol del usuario. Los que ya existían quedan como JUGADOR.
     @Enumerated(EnumType.STRING)
@@ -56,8 +61,8 @@ public class Usuario {
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
 
-    public String getPassword() { return password; }
-    public void setPassword(String password) { this.password = password; }
+    public java.util.UUID getAuthId() { return authId; }
+    public void setAuthId(java.util.UUID authId) { this.authId = authId; }
 
     public LocalDateTime getFechaRegistro() { return fechaRegistro; }
     public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
@@ -68,6 +73,8 @@ public class Usuario {
     public BigDecimal getSaldo() { return saldo; }
     public void setSaldo(BigDecimal saldo) { this.saldo = saldo; }
 
+    public String getDni() { return dni; }
+    public void setDni(String dni) { this.dni = dni; }
     public String getFotoUrl() { return fotoUrl; }
     public void setFotoUrl(String fotoUrl) { this.fotoUrl = fotoUrl; }
 

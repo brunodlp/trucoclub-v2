@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_URL, obtenerUsuario, pedirConSesion, guardarRol } from "../config";
+import { API_URL, obtenerUsuario, pedirConSesion, guardarPerfil } from "../config";
 import { Carta } from "./truco/Carta";
 import Navegacion, { Encabezado } from "./Navegacion";
 import { pesos, Aviso } from "./plata";
-import { HojaDeposito, HojaRetiro, HojaNombre } from "./HojasPlata";
+import { HojaDeposito, HojaRetiro, HojaNombre, HojaDni } from "./HojasPlata";
 
 /** Foto de perfil circular. Si no tiene foto, muestra la inicial. */
 function FotoPerfil({ nombre, url, size = 56 }) {
@@ -39,7 +39,8 @@ export default function Inicio() {
       .then((p) => {
         setPerfil(p);
         setError(false);
-        guardarRol(p.rol);
+        guardarPerfil(p.username, p.rol);
+        setUsuario(p.username);
       })
       .catch(() => setError(true));
   }, []);
@@ -52,7 +53,26 @@ export default function Inicio() {
     cargarPerfil();
   }, [usuario, navigate, cargarPerfil]);
 
+  const faltaDni = perfil && !perfil.dni;
+  const [despuesDelDni, setDespuesDelDni] = useState(null); // "deposito" | "retiro"
+
   const abrir = (cual) => {
+    // Sin DNI no se puede depositar ni retirar: primero lo carga y después sigue con lo que eligió
+    if (faltaDni) {
+      setDespuesDelDni(cual);
+      setHoja("dni");
+      return;
+    }
+    setHoja(cual);
+    if (!datosPagos) {
+      pedirConSesion(`${API_URL}/api/movimientos/datos`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then(setDatosPagos)
+        .catch(() => {});
+    }
+  };
+
+  const abrirSinDni = (cual) => {
     setHoja(cual);
     if (!datosPagos) {
       pedirConSesion(`${API_URL}/api/movimientos/datos`)
@@ -112,6 +132,26 @@ export default function Inicio() {
           </p>
           {error && <p className="text-xs text-rose-300 mt-1">No se pudo cargar el saldo. ¿Está prendido el servidor?</p>}
 
+          {faltaDni && (
+            <button
+              onClick={() => setHoja("dni")}
+              className="mt-4 w-full flex items-center gap-3 rounded-2xl bg-amber-300/10 ring-1 ring-amber-300/30 px-3.5 py-3 text-left"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0 text-amber-200" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                <circle cx="9" cy="11" r="2" />
+                <path d="M6.5 15.5c.6-1.2 1.5-1.8 2.5-1.8s1.9.6 2.5 1.8M14 10h4M14 13.5h3" />
+              </svg>
+              <span className="flex-1 text-sm">
+                <b className="text-amber-100">Cargá tu DNI</b>
+                <span className="block text-xs text-white/55">Lo necesitás para depositar y retirar.</span>
+              </span>
+              <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0 text-white/40" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+            </button>
+          )}
+
           <div className="grid grid-cols-2 gap-3 mt-5">
             <button
               onClick={() => abrir("deposito")}
@@ -134,6 +174,24 @@ export default function Inicio() {
       {hoja === "deposito" && <HojaDeposito datos={datosPagos} onCerrar={() => setHoja(null)} onListo={listo} />}
       {hoja === "retiro" && (
         <HojaRetiro datos={datosPagos} saldo={Number(perfil?.saldo ?? 0)} onCerrar={() => setHoja(null)} onListo={listo} />
+      )}
+      {hoja === "dni" && (
+        <HojaDni
+          onCerrar={() => {
+            setHoja(null);
+            setDespuesDelDni(null);
+          }}
+          onListo={() => {
+            const siguiente = despuesDelDni;
+            setDespuesDelDni(null);
+            setPerfil((p) => (p ? { ...p, dni: "ok" } : p)); // ya tiene DNI (el perfil se recarga igual)
+            cargarPerfil();
+            if (siguiente) {
+              setHoja(null);
+              setTimeout(() => abrirSinDni(siguiente), 0);
+            } else listo("DNI guardado. Ya podés depositar y retirar.");
+          }}
+        />
       )}
       {hoja === "nombre" && (
         <HojaNombre

@@ -1,101 +1,82 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom"; // <-- Sumamos useNavigate
-import { API_URL, guardarSesion } from "../config";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { leerAvisoLogin } from "../config";
+import { supabase } from "../supabase";
+import { Campo, BotonPrincipal } from "./plata";
+import { PantallaAcceso, Mensaje, traducirError, cargarPerfil, BotonGoogle, PERFIL_INCOMPLETO } from "./Acceso";
 
 export default function Login() {
-  const [formData, setFormData] = useState({ username: "", password: "" });
-  const [mensaje, setMensaje] = useState({ texto: "", tipo: "" });
-  const navigate = useNavigate(); // <-- Inicializamos el navegador interno
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(() => leerAvisoLogin() ?? "");
+  const [cargando, setCargando] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  // Si ya hay sesión (o vuelve del link de confirmación del email), entra directo
+  useEffect(() => {
+    let activo = true;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!activo || !data.session) return;
+      const problema = await cargarPerfil();
+      if (!activo) return;
+      if (problema === PERFIL_INCOMPLETO) navigate("/completar-perfil", { replace: true });
+      else if (problema) setError(problema);
+      else navigate("/inicio", { replace: true });
+    });
+    return () => {
+      activo = false;
+    };
+  }, [navigate]);
 
-  const handleSubmit = async (e) => {
+  const entrar = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch(
-        `${API_URL}/api/auth/login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        },
-      );
-      if (response.ok) {
-        // El servidor devuelve { token, username, rol }: guardamos la sesión
-        const { token, username, rol } = await response.json();
-        guardarSesion(username, token, rol);
-        setMensaje({
-          texto: "¡Bienvenido a TrucoClub! 🃏",
-          tipo: "exito",
-        });
-        // Espera 1.5 segundos para mostrar el mensaje lindo y te redirige
-        setTimeout(() => navigate("/inicio"), 1500);
-      } else {
-        setMensaje({ texto: await response.text(), tipo: "error" });
-      }
-    } catch (error) {
-      setMensaje({ texto: "Error de conexión con el servidor", tipo: "error" });
+    setError("");
+    setCargando(true);
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (err) {
+      setError(traducirError(err));
+      setCargando(false);
+      return;
     }
+    const problema = await cargarPerfil();
+    if (problema === PERFIL_INCOMPLETO) return navigate("/completar-perfil", { replace: true });
+    if (problema) {
+      setError(problema);
+      setCargando(false);
+      return;
+    }
+    navigate("/inicio", { replace: true });
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-neutral-900">
-      <div className="w-full max-w-md p-8 space-y-6 bg-neutral-800 rounded-xl shadow-2xl border border-neutral-700">
-        <h2 className="text-3xl font-bold text-center text-white">
-          Iniciar Sesión
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block mb-1 text-sm font-medium text-neutral-300">
-              Usuario
-            </label>
-            <input
-              type="text"
-              name="username"
-              className="w-full px-4 py-2 text-white bg-neutral-700 border border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="truquero123"
-              value={formData.username}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          <div>
-            <label className="block mb-1 text-sm font-medium text-neutral-300">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              name="password"
-              className="w-full px-4 py-2 text-white bg-neutral-700 border border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="••••••••"
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full px-4 py-2 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Entrar a la mesa
-          </button>
-        </form>
-        {mensaje.texto && (
-          <div
-            className={`p-3 text-center rounded-lg font-medium ${mensaje.tipo === "exito" ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"}`}
-          >
-            {mensaje.texto}
-          </div>
-        )}
-        <p className="text-sm text-center text-neutral-400">
+    <PantallaAcceso
+      titulo="Iniciá sesión"
+      pie={
+        <>
           ¿No tenés cuenta?{" "}
-          <Link to="/registro" className="text-blue-400 hover:underline">
-            Registrate acá
+          <Link to="/registro" className="font-semibold text-amber-200 hover:text-amber-100">
+            Registrate
           </Link>
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <form onSubmit={entrar} className="space-y-4">
+        <Campo etiqueta="Email" type="email" autoComplete="email" placeholder="tu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <Campo
+          etiqueta="Contraseña"
+          type="password"
+          autoComplete="current-password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <Mensaje texto={error} />
+        <BotonPrincipal cargando={cargando} className="bg-amber-300 text-neutral-900 hover:bg-amber-200">
+          Entrar
+        </BotonPrincipal>
+      </form>
+      <BotonGoogle onError={setError} />
+    </PantallaAcceso>
   );
 }

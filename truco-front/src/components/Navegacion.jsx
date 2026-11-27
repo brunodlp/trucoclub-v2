@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { obtenerUsuario, borrarUsuario, esAdmin } from "../config";
+import { obtenerUsuario, cerrarSesion as salir, esAdmin } from "../config";
 import { LogoConNombre } from "./Logo";
 import Campana from "./Notificaciones";
 
@@ -82,8 +82,7 @@ export function Encabezado() {
   const navigate = useNavigate();
   const usuario = obtenerUsuario();
   const cerrarSesion = () => {
-    sessionStorage.removeItem("trucoMesa");
-    borrarUsuario();
+    salir();
     navigate("/");
   };
   return (

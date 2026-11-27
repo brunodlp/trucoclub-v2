@@ -15,6 +15,14 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);
 
+    /** El perfil de TrucoClub del usuario de Supabase Auth. */
+    Optional<Usuario> findByAuthId(java.util.UUID authId);
+
+    /** En PostgreSQL las comparaciones distinguen mayúsculas: esto no (Joaco = joaco). */
+    boolean existsByUsernameIgnoreCase(String username);
+
+    boolean existsByDni(String dni);
+
     /** Búsqueda del admin por nombre (parte del nombre, sin importar mayúsculas). */
     java.util.List<Usuario> findTop20ByUsernameContainingIgnoreCaseOrderByUsernameAsc(String parte);
 

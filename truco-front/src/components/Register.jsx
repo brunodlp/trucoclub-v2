@@ -1,121 +1,136 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { API_URL } from "../config";
+import { supabase } from "../supabase";
+import { Campo, BotonPrincipal, limpiarDni } from "./plata";
+import { PantallaAcceso, Mensaje, traducirError, cargarPerfil, BotonGoogle } from "./Acceso";
 
+const NOMBRE_VALIDO = /^[A-Za-z0-9_.]{3,20}$/;
+
+/**
+ * Registro con Supabase Auth. El nombre de usuario viaja en los datos del registro y la base crea
+ * sola el perfil de TrucoClub (trucoclub.usuarios) atado al usuario de Supabase.
+ */
 export default function Registro() {
-  const [formData, setFormData] = useState({
-    username: "",
-    email: "",
-    password: "",
-  });
-  const [mensaje, setMensaje] = useState({ texto: "", tipo: "" });
-  const navigate = useNavigate(); // Para redirigir después de registrarse
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ username: "", dni: "", email: "", password: "" });
+  const [error, setError] = useState("");
+  const [enviado, setEnviado] = useState("");
+  const [cargando, setCargando] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const cambiar = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = async (e) => {
+  const registrar = async (e) => {
     e.preventDefault();
+    const username = form.username.trim();
+    const email = form.email.trim();
+    const dni = limpiarDni(form.dni);
+    if (!NOMBRE_VALIDO.test(username)) return setError("El nombre tiene que tener de 3 a 20 caracteres: letras, números, _ o punto.");
+    if (!/^\d{7,8}$/.test(dni)) return setError("El DNI tiene que tener 7 u 8 números.");
+    if (form.password.length < 6) return setError("La contraseña tiene que tener al menos 6 caracteres.");
+    setError("");
+    setCargando(true);
     try {
-      const response = await fetch(
-        `${API_URL}/api/auth/register`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        },
-      );
-      const data = await response.text();
-
-      if (response.ok) {
-        setMensaje({
-          texto: "¡Cuenta creada! Llevándote al login...",
-          tipo: "exito",
-        });
-        // Espera 2 segundos y lo manda a la pantalla de login
-        setTimeout(() => navigate("/"), 2000);
-      } else {
-        setMensaje({ texto: data, tipo: "error" });
+      // 1) ¿El nombre y el DNI están libres? (la base lo vuelve a chequear al crear la cuenta)
+      const r = await fetch(`${API_URL}/api/auth/disponible?username=${encodeURIComponent(username)}&dni=${dni}`);
+      if (r.ok) {
+        const d = await r.json();
+        if (!d.disponible) {
+          setError(d.motivo);
+          return;
+        }
       }
-    } catch (error) {
-      setMensaje({ texto: "Error de conexión con el servidor", tipo: "error" });
+      // 2) Crear la cuenta en Supabase Auth
+      const { data, error: err } = await supabase.auth.signUp({
+        email,
+        password: form.password,
+        options: { data: { username, dni }, emailRedirectTo: window.location.origin },
+      });
+      if (err) {
+        setError(traducirError(err));
+        return;
+      }
+      // 3a) Si Supabase pide confirmar el email, avisamos
+      if (!data.session) {
+        setEnviado(email);
+        return;
+      }
+      // 3b) Si no, ya queda logueado
+      const problema = await cargarPerfil();
+      if (problema) setError(problema);
+      else navigate("/inicio", { replace: true });
+    } catch (e2) {
+      setError(traducirError(e2));
+    } finally {
+      setCargando(false);
     }
   };
 
+  if (enviado) {
+    return (
+      <PantallaAcceso titulo="Revisá tu email" pie={<Link to="/" className="font-semibold text-amber-200">Volver a iniciar sesión</Link>}>
+        <Mensaje
+          tipo="ok"
+          texto={`Te mandamos un link a ${enviado} para confirmar tu cuenta. Abrilo y vas a entrar directo (si no lo ves, mirá en spam).`}
+        />
+      </PantallaAcceso>
+    );
+  }
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-neutral-900">
-      <div className="w-full max-w-md p-8 space-y-6 bg-neutral-800 rounded-xl shadow-2xl border border-neutral-700">
-        <h2 className="text-3xl font-bold text-center text-white">
-          Crear Cuenta
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block mb-1 text-sm font-medium text-neutral-300">
-              Usuario
-            </label>
-            <input
-              type="text"
-              name="username"
-              className="w-full px-4 py-2 text-white bg-neutral-700 border border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.username}
-              onChange={handleChange}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-neutral-300">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              className="w-full px-4 py-2 text-white bg-neutral-700 border border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-neutral-300">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              name="password"
-              className="w-full px-4 py-2 text-white bg-neutral-700 border border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full px-4 py-2 font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Registrarse
-          </button>
-        </form>
-
-        {mensaje.texto && (
-          <div
-            className={`p-3 text-center rounded-lg font-medium ${mensaje.tipo === "exito" ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"}`}
-          >
-            {mensaje.texto}
-          </div>
-        )}
-
-        <p className="text-sm text-center text-neutral-400">
+    <PantallaAcceso
+      titulo="Creá tu cuenta"
+      pie={
+        <>
           ¿Ya tenés cuenta?{" "}
-          <Link to="/" className="text-blue-400 hover:underline">
-            Iniciá sesión acá
+          <Link to="/" className="font-semibold text-amber-200 hover:text-amber-100">
+            Iniciá sesión
           </Link>
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <form onSubmit={registrar} className="space-y-4">
+        <Campo
+          etiqueta="Nombre de usuario"
+          name="username"
+          ayuda="De 3 a 20 caracteres: letras, números, _ o punto. Lo ven los demás jugadores."
+          autoCapitalize="none"
+          autoCorrect="off"
+          maxLength={20}
+          placeholder="truquero123"
+          value={form.username}
+          onChange={cambiar}
+          required
+        />
+        <Campo
+          etiqueta="DNI"
+          name="dni"
+          ayuda="Lo usamos para verificar que tus depósitos y retiros sean tuyos. Una cuenta por DNI."
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={10}
+          placeholder="Solo números"
+          value={form.dni}
+          onChange={cambiar}
+          required
+        />
+        <Campo etiqueta="Email" name="email" type="email" autoComplete="email" placeholder="tu@email.com" value={form.email} onChange={cambiar} required />
+        <Campo
+          etiqueta="Contraseña"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="Mínimo 6 caracteres"
+          value={form.password}
+          onChange={cambiar}
+          required
+        />
+        <Mensaje texto={error} />
+        <BotonPrincipal cargando={cargando} className="bg-amber-300 text-neutral-900 hover:bg-amber-200">
+          Crear cuenta
+        </BotonPrincipal>
+      </form>
+      <BotonGoogle onError={setError} />
+    </PantallaAcceso>
   );
 }

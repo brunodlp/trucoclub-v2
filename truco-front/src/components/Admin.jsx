@@ -4,7 +4,7 @@ import { API_URL, obtenerUsuario, pedirConSesion, leerError } from "../config";
 import Navegacion, { Encabezado } from "./Navegacion";
 import AdminGanancias from "./AdminGanancias";
 import AdminJugadores from "./AdminJugadores";
-import { pesos, formatearFecha, EstadoChip, IconoTipo, Hoja, Copiable, BotonPrincipal, Aviso } from "./plata";
+import { pesos, formatearFecha, EstadoChip, IconoTipo, Hoja, Copiable, BotonPrincipal, Aviso, formatoDni } from "./plata";
 
 const NOMBRE = { DEPOSITO: "Depósito", RETIRO: "Retiro" };
 
@@ -19,6 +19,9 @@ function Pendiente({ m, onAprobar, onRechazar }) {
             {NOMBRE[m.tipo]} · <span className="text-amber-200">{m.usuario}</span>
           </p>
           <p className="text-xs text-white/45 mt-0.5">{formatearFecha(m.creado)}</p>
+          <p className="text-xs mt-0.5 whitespace-nowrap">
+            {m.dni ? <span className="text-white/75 font-semibold">DNI {formatoDni(m.dni)}</span> : <span className="text-rose-300">Sin DNI</span>}
+          </p>
         </div>
         <p className="text-xl font-black tabular-nums">{pesos.format(m.monto)}</p>
       </div>

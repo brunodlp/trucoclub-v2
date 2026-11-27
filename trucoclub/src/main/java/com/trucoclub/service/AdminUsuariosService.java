@@ -72,7 +72,7 @@ public class AdminUsuariosService {
                 .map(MovimientoVista::paraAdmin).toList();
         List<AdminUsuario.Partida> partidas = mesas.stream().limit(MAX_PARTIDAS).map(m -> partida(m, u)).toList();
 
-        return new Detalle(u.getId(), u.getUsername(), u.getEmail(), u.getFechaRegistro(),
+        return new Detalle(u.getId(), u.getUsername(), u.getEmail(), u.getDni(), u.getFechaRegistro(),
                 u.getSaldo() == null ? BigDecimal.ZERO : u.getSaldo(), u.getRol().name(), u.estaBloqueado(),
                 u.getMotivoBloqueo(), est, movimientos, partidas);
     }

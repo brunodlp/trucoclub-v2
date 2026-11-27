@@ -6,6 +6,7 @@ import Juego from "./components/Game";
 import Movimientos from "./components/Movimientos";
 import Admin from "./components/Admin";
 import Premios from "./components/Premios";
+import CompletarPerfil from "./components/CompletarPerfil";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         {/* Secciones con la barra de navegación de abajo */}
         <Route path="/inicio" element={<Inicio />} />
         <Route path="/juego" element={<Juego />} /> {/* Mesas (y la partida en pantalla completa) */}
+        <Route path="/completar-perfil" element={<CompletarPerfil />} /> {/* después de entrar con Google */}
         <Route path="/premios" element={<Premios />} /> {/* Ranking y Objetivos */}
         <Route path="/ranking" element={<Navigate to="/premios" replace />} />
         <Route path="/movimientos" element={<Movimientos />} />

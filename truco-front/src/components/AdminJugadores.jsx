@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { API_URL, pedirConSesion, leerError } from "../config";
-import { pesos, formatearFecha, EstadoChip, IconoTipo, Hoja, BotonPrincipal, ENTRA, NOMBRE_TIPO } from "./plata";
+import { pesos, formatearFecha, EstadoChip, IconoTipo, Hoja, BotonPrincipal, ENTRA, NOMBRE_TIPO, formatoDni } from "./plata";
 
 const sinCentavos = (v) => pesos.format(v).replace(/,00$/, "");
 
@@ -120,6 +120,9 @@ function Ficha({ id, onVolver, onCambio }) {
               <Insignias rol={f.rol} bloqueado={f.bloqueado} />
             </div>
             <p className="text-xs text-white/45 mt-0.5 break-all">{f.email}</p>
+            <p className="text-xs mt-0.5">
+              {f.dni ? <span className="text-white/75 font-semibold">DNI {formatoDni(f.dni)}</span> : <span className="text-rose-300">Sin DNI cargado</span>}
+            </p>
             {f.registrado && <p className="text-[11px] text-white/35 mt-0.5">Se registró el {formatearFecha(f.registrado)}</p>}
           </div>
         </div>

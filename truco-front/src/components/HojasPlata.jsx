@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { API_URL, pedirConSesion, leerError, guardarSesion, obtenerToken } from "../config";
-import { Hoja, Campo, Copiable, BotonPrincipal, pesos, leerMonto } from "./plata";
+import { API_URL, pedirConSesion, leerError, guardarPerfil } from "../config";
+import { Hoja, Campo, Copiable, BotonPrincipal, pesos, leerMonto, limpiarDni } from "./plata";
 
 async function enviar(ruta, monto, detalle) {
   const res = await pedirConSesion(`${API_URL}/api/movimientos/${ruta}`, {
@@ -166,13 +166,9 @@ export function HojaRetiro({ datos, saldo, onCerrar, onListo }) {
   );
 }
 
-/**
- * Cambiar el nombre de usuario. Pide la contraseña para confirmar. El servidor devuelve un token
- * nuevo (el viejo tenía el nombre anterior y deja de valer), así que lo guardamos.
- */
+/** Cambiar el nombre de usuario. La sesión sigue igual (Supabase identifica a la cuenta por su id). */
 export function HojaNombre({ actual, onCerrar, onListo }) {
   const [nombre, setNombre] = useState(actual ?? "");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
 
@@ -187,11 +183,11 @@ export function HojaNombre({ actual, onCerrar, onListo }) {
       const res = await pedirConSesion(`${API_URL}/api/usuarios/yo/nombre`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre: nombre.trim(), password }),
+        body: JSON.stringify({ nombre: nombre.trim() }),
       });
       if (!res.ok) throw new Error(await leerError(res));
-      const { token, username } = await res.json();
-      guardarSesion(username, token ?? obtenerToken());
+      const { username } = await res.json();
+      guardarPerfil(username);
       onListo(username);
     } catch (err) {
       setError(err.message);
@@ -213,22 +209,66 @@ export function HojaNombre({ actual, onCerrar, onListo }) {
           onChange={(e) => setNombre(e.target.value)}
           required
         />
-        <Campo
-          etiqueta="Tu contraseña"
-          type="password"
-          autoComplete="current-password"
-          placeholder="Para confirmar que sos vos"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
         {error && <p className="text-sm text-rose-300">{error}</p>}
-        <BotonPrincipal cargando={cargando} disabled={!password} className="bg-white text-neutral-900 hover:bg-white/90">
+        <BotonPrincipal cargando={cargando} className="bg-white text-neutral-900 hover:bg-white/90">
           Guardar
         </BotonPrincipal>
         <p className="text-[11px] text-center text-white/40">
           Tu saldo y tus movimientos no cambian. No se puede cambiar con una mesa abierta o en juego.
         </p>
+      </form>
+    </Hoja>
+  );
+}
+
+/** Cargar el DNI (cuentas creadas antes de que se pidiera). Una vez cargado, solo lo cambia un admin. */
+export function HojaDni({ onCerrar, onListo }) {
+  const [dni, setDni] = useState("");
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  const confirmar = async (e) => {
+    e.preventDefault();
+    const limpio = limpiarDni(dni);
+    if (!/^\d{7,8}$/.test(limpio)) return setError("El DNI tiene que tener 7 u 8 números.");
+    setError("");
+    setCargando(true);
+    try {
+      const res = await pedirConSesion(`${API_URL}/api/usuarios/yo/dni`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dni: limpio }),
+      });
+      if (!res.ok) throw new Error(await leerError(res));
+      onListo();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <Hoja titulo="Cargá tu DNI" onCerrar={onCerrar}>
+      <form onSubmit={confirmar} className="space-y-4">
+        <p className="text-sm text-white/60">
+          Lo necesitamos para verificar que los depósitos y retiros sean de una cuenta a tu nombre.
+        </p>
+        <Campo
+          etiqueta="DNI"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={10}
+          placeholder="Solo números"
+          value={dni}
+          onChange={(e) => setDni(e.target.value)}
+          required
+        />
+        {error && <p className="text-sm text-rose-300">{error}</p>}
+        <BotonPrincipal cargando={cargando} className="bg-amber-300 text-neutral-900 hover:bg-amber-200">
+          Guardar DNI
+        </BotonPrincipal>
+        <p className="text-[11px] text-center text-white/40">Una vez guardado no se puede cambiar desde la app.</p>
       </form>
     </Hoja>
   );

@@ -14,7 +14,7 @@ public final class AdminUsuario {
     }
 
     /** Ficha completa del jugador. */
-    public record Detalle(Long id, String username, String email, LocalDateTime registrado, BigDecimal saldo,
+    public record Detalle(Long id, String username, String email, String dni, LocalDateTime registrado, BigDecimal saldo,
                           String rol, boolean bloqueado, String motivoBloqueo, Estadisticas estadisticas,
                           List<MovimientoVista> movimientos, List<Partida> partidas) {
     }

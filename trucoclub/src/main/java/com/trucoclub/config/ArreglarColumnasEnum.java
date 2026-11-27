@@ -1,5 +1,6 @@
 package com.trucoclub.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
@@ -14,6 +15,7 @@ import java.util.List;
  * que existían en ese momento. Si después agregamos un valor nuevo (ej: APUESTA), MySQL lo rechaza
  * ("Data truncated for column 'tipo'"). Al arrancar, esto las pasa a VARCHAR, que acepta cualquier valor.
  * Corre antes que todo lo demás y si ya están bien no hace nada.
+ * Solo aplica a MySQL: en PostgreSQL (Supabase) las columnas ya son texto común.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -27,13 +29,16 @@ public class ArreglarColumnasEnum implements ApplicationRunner {
     };
 
     private final JdbcTemplate jdbc;
+    private final String urlBase;
 
-    public ArreglarColumnasEnum(JdbcTemplate jdbc) {
+    public ArreglarColumnasEnum(JdbcTemplate jdbc, @Value("${spring.datasource.url:}") String urlBase) {
         this.jdbc = jdbc;
+        this.urlBase = urlBase;
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        if (!urlBase.startsWith("jdbc:mysql")) return; // en Supabase no hace falta
         for (String[] c : COLUMNAS) {
             try {
                 List<String> tipo = jdbc.queryForList(

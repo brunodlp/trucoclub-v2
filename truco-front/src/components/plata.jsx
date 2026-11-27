@@ -2,6 +2,12 @@ import { useState } from "react";
 
 // Piezas compartidas por Inicio, Movimientos y el panel de admin.
 
+/** "30123456" -> "30.123.456" */
+export const formatoDni = (dni) => (dni ? String(dni).replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "");
+
+/** Deja solo los números del DNI (acepta "30.123.456"). */
+export const limpiarDni = (texto) => String(texto ?? "").replace(/\D/g, "");
+
 export const pesos = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
 
 const fechaCorta = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });

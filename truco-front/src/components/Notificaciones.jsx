@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_URL, pedirConSesion, obtenerToken } from "../config";
+import { API_URL, pedirConSesion, obtenerUsuario } from "../config";
 import { Hoja, formatearFecha } from "./plata";
 
 const ESTILO = {
@@ -35,7 +35,7 @@ export default function Campana() {
   const [abierta, setAbierta] = useState(false);
 
   const cargar = useCallback(() => {
-    if (!obtenerToken()) return;
+    if (!obtenerUsuario()) return;
     pedirConSesion(`${API_URL}/api/notificaciones`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setDatos(d))

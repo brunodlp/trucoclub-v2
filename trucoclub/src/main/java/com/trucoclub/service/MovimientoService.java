@@ -85,6 +85,7 @@ public class MovimientoService {
         }
         Usuario usuario = usuarioRepository.findByUsername(username)
                 .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "No existe el usuario"));
+        exigirDni(usuario);
         Movimiento m = new Movimiento(usuario, TipoMovimiento.DEPOSITO, valor, detalle);
         return MovimientoVista.paraUsuario(movimientoRepository.save(m));
     }
@@ -98,6 +99,7 @@ public class MovimientoService {
         }
         Usuario usuario = usuarioRepository.buscarParaActualizarSaldo(username)
                 .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "No existe el usuario"));
+        exigirDni(usuario);
         // Máximo de retiros por día (cuentan los pendientes y los aprobados; los cancelados y rechazados no).
         // Se cuenta con la fila del usuario bloqueada, así dos pedidos a la vez no pasan los dos.
         long hoy = movimientoRepository.countByUsuarioUsernameAndTipoAndEstadoInAndCreadoGreaterThanEqual(username,
@@ -224,6 +226,13 @@ public class MovimientoService {
         if (monto.compareTo(minimo) < 0) throw error(HttpStatus.BAD_REQUEST, "El monto mínimo es $" + minimo.toPlainString() + ".");
         if (monto.compareTo(datosPagos.maximo()) > 0) throw error(HttpStatus.BAD_REQUEST, "El monto máximo es $" + datosPagos.maximo().toPlainString() + ".");
         return monto.setScale(2);
+    }
+
+    /** Sin DNI no se puede verificar al titular de la transferencia. */
+    private static void exigirDni(Usuario u) {
+        if (u.getDni() == null || u.getDni().isBlank()) {
+            throw error(HttpStatus.CONFLICT, "Cargá tu DNI antes de depositar o retirar.");
+        }
     }
 
     private static BigDecimal saldoDe(Usuario u) {

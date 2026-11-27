@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
-import { API_URL, WS_URL, obtenerUsuario, obtenerToken, pedirConSesion, borrarUsuario, leerError } from "../config";
+import { API_URL, WS_URL, obtenerUsuario, obtenerToken, pedirConSesion, cerrarSesion, leerError } from "../config";
 import Mesa from "./truco/Mesa";
 import Navegacion, { Encabezado } from "./Navegacion";
 import { pesos, Hoja, BotonPrincipal, Aviso } from "./plata";
@@ -282,8 +282,11 @@ export default function Juego() {
 
     const client = new Client({
       webSocketFactory: () => new SockJS(WS_URL),
-      // El token va en el CONNECT: el servidor sabe quién sos y no te deja jugar como otro
-      connectHeaders: { Authorization: `Bearer ${obtenerToken()}` },
+      // El token de Supabase va en el CONNECT: el servidor sabe quién sos y no te deja jugar como otro.
+      // Se pide de nuevo en cada reconexión, así siempre va uno vigente.
+      beforeConnect: async () => {
+        client.connectHeaders = { Authorization: `Bearer ${await obtenerToken()}` };
+      },
       reconnectDelay: 3000,
       onConnect: () => {
         setConectado(true);
@@ -297,7 +300,7 @@ export default function Juego() {
       onStompError: (frame) => {
         if ((frame.headers?.message ?? "").toLowerCase().includes("sesi")) {
           client.deactivate();
-          borrarUsuario();
+          cerrarSesion();
           navigate("/");
         }
       },
