@@ -1,6 +1,7 @@
 package com.trucoclub.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,6 +25,24 @@ public class Usuario {
 
     private Integer partidasGanadas = 0;
 
+    // NUEVO: plata disponible para apostar. Arranca en 0.
+    @Column(precision = 14, scale = 2)
+    private BigDecimal saldo = BigDecimal.ZERO;
+
+    // NUEVO: foto de perfil (por ahora vacía; después se podrá subir)
+    private String fotoUrl;
+
+    // NUEVO: rol del usuario. Los que ya existían quedan como JUGADOR.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20, columnDefinition = "varchar(20)")
+    private Rol rol = Rol.JUGADOR;
+
+    // NUEVO: un admin puede suspender la cuenta (no puede entrar ni jugar). Su saldo queda guardado.
+    private Boolean bloqueado = false;
+
+    @Column(length = 200)
+    private String motivoBloqueo;
+
     // Constructor vacío obligatorio para JPA
     public Usuario() {}
 
@@ -45,4 +64,20 @@ public class Usuario {
 
     public Integer getPartidasGanadas() { return partidasGanadas; }
     public void setPartidasGanadas(Integer partidasGanadas) { this.partidasGanadas = partidasGanadas; }
+
+    public BigDecimal getSaldo() { return saldo; }
+    public void setSaldo(BigDecimal saldo) { this.saldo = saldo; }
+
+    public String getFotoUrl() { return fotoUrl; }
+    public void setFotoUrl(String fotoUrl) { this.fotoUrl = fotoUrl; }
+
+    public Rol getRol() { return rol == null ? Rol.JUGADOR : rol; }
+    public void setRol(Rol rol) { this.rol = rol; }
+
+    public boolean esAdmin() { return getRol() == Rol.ADMIN; }
+
+    public boolean estaBloqueado() { return Boolean.TRUE.equals(bloqueado); }
+    public void setBloqueado(boolean bloqueado) { this.bloqueado = bloqueado; }
+    public String getMotivoBloqueo() { return motivoBloqueo; }
+    public void setMotivoBloqueo(String motivoBloqueo) { this.motivoBloqueo = motivoBloqueo; }
 }

@@ -19,7 +19,7 @@ public class Partida {
     private int manoActual = 1;
 
 
-    // --- ESTADO DEL JUEGO (Lo nuevo) ---
+    // --- ESTADO DEL JUEGO ---
     private EstadoJuego estadoActual;
     private Jugador quienDebeResponder;
 
@@ -35,11 +35,56 @@ public class Partida {
     private int puntosPropuestosTruco = 1;
     private Jugador quienTieneElQuieroTruco = null;
     private boolean trucoGritadoPendiente = false; // Para recordar que hay un Truco en pausa
+    @JsonIgnore
+    private Jugador ultimoQueCantoTruco = null;    // NUEVO: para saber quién responde el truco después del envido
+
+    // --- NUEVO: INFO PARA MOSTRAR EN PANTALLA ---
+    private int numeroRonda = 0;                    // Cuenta las rondas (lo usa el servicio para el reparto automático)
+    private int cantoSeq = 0;                       // Sube cada vez que alguien dice algo (el front muestra el globo)
+    private String cantoTexto = "";                 // "TRUCO", "QUIERO", "NO QUIERO", "ME VOY AL MAZO"...
+    private String cantoDe = "";                    // Nombre de quien lo dijo
+    private String ultimoEvento = "";               // Texto para el cartel del centro
+    private List<String> resultadosBazas = new ArrayList<>(); // Ganador de cada baza (nombre o "PARDA")
+    private List<String> abreBazas = new ArrayList<>();       // NUEVO: quién tiró primero en cada baza
+    private String ganadorUltimaRonda = null;
+    private int puntosUltimaRonda = 0;
+    private String ganadorPartido = null;
+    private String abandonoDe = null;               // NUEVO: nombre del que abandonó (si alguien abandonó)
+
+    // --- NUEVO: CANTO DE LOS TANTOS DEL ENVIDO (el mano primero; el pie dice "SON BUENAS" si pierde) ---
+    public record CantoEnvido(String jugador, String texto) {
+    }
+    private int envidoSeq = 0;
+    private List<CantoEnvido> envidoCantos = new ArrayList<>();
+
+    // --- NUEVO: el que gana el envido muestra sus cartas al terminar la ronda ---
+    public record MuestraEnvido(String jugador, int tantos, List<Carta> cartas) {
+    }
+    private MuestraEnvido envidoMostrar = null;
+
+    // --- NUEVO: RELOJ DE TURNO (lo maneja TrucoService) ---
+    private int versionAccion = 0;   // sube cada vez que cambia algo en la mesa
+    private long venceTurnoEn = 0;   // momento (System.currentTimeMillis) en que se acaba el tiempo; 0 = sin reloj
+    @JsonIgnore
+    private long tiempoExtraMs = 0;  // tiempo de más para la próxima jugada (mientras se muestran los tantos)
+    private static final long TIEMPO_NUBES_ENVIDO_MS = 5000;
 
     @JsonIgnore // Evita que el mazo viaje al frontend y cause bucles
     private Mazo mazo;
 
     private int puntosPartido;
+
+    // --- NUEVO: plata de la mesa (lo que pone cada uno y lo que cobra el ganador) ---
+    private java.math.BigDecimal monto = java.math.BigDecimal.ZERO;
+    private java.math.BigDecimal premio = java.math.BigDecimal.ZERO;
+
+    public java.math.BigDecimal getMonto() { return monto; }
+    public java.math.BigDecimal getPremio() { return premio; }
+
+    public void setApuesta(java.math.BigDecimal monto, java.math.BigDecimal premio) {
+        this.monto = monto;
+        this.premio = premio;
+    }
 
     public Partida(Jugador j1, Jugador j2, int puntos) {
         this.jugador1 = j1;
@@ -50,6 +95,29 @@ public class Partida {
         actualizarRoles();
         this.estadoActual = EstadoJuego.ESPERANDO_CARTA;
     }
+
+    // --- NUEVO: SALA DE ESPERA ---
+
+    /** La mesa queda abierta esperando que se siente el rival. */
+    public void esperarRival() {
+        this.estadoActual = EstadoJuego.ESPERANDO_JUGADORES;
+        this.ultimoEvento = "Esperando rival...";
+    }
+
+    public boolean hayLugar() {
+        return estadoActual == EstadoJuego.ESPERANDO_JUGADORES;
+    }
+
+    /** Se sienta el segundo jugador y arranca la primera ronda. */
+    public void sentarRival(String nombre) {
+        if (!hayLugar()) return;
+        jugador2.setNombre(nombre);
+        this.estadoActual = EstadoJuego.ESPERANDO_CARTA;
+        empezarRonda();
+        this.ultimoEvento = "";
+    }
+
+    // --- GETTERS ---
 
     public Jugador getJugador1() {
         return jugador1;
@@ -119,6 +187,10 @@ public class Partida {
         return puntosEnJuegoTruco;
     }
 
+    public int getPuntosPropuestosTruco() {
+        return puntosPropuestosTruco;
+    }
+
     public Jugador getQuienTieneElQuieroTruco() {
         return quienTieneElQuieroTruco;
     }
@@ -135,6 +207,129 @@ public class Partida {
         return puntosPartido;
     }
 
+    public int getNumeroRonda() {
+        return numeroRonda;
+    }
+
+    public int getCantoSeq() {
+        return cantoSeq;
+    }
+
+    public String getCantoTexto() {
+        return cantoTexto;
+    }
+
+    public String getCantoDe() {
+        return cantoDe;
+    }
+
+    public String getUltimoEvento() {
+        return ultimoEvento;
+    }
+
+    public List<String> getResultadosBazas() {
+        return resultadosBazas;
+    }
+
+    public List<String> getAbreBazas() {
+        return abreBazas;
+    }
+
+    public String getGanadorUltimaRonda() {
+        return ganadorUltimaRonda;
+    }
+
+    public int getPuntosUltimaRonda() {
+        return puntosUltimaRonda;
+    }
+
+    public String getGanadorPartido() {
+        return ganadorPartido;
+    }
+
+    public String getAbandonoDe() {
+        return abandonoDe;
+    }
+
+    /** NUEVO: un jugador abandona. El partido termina para los dos y gana el otro. */
+    public void abandonar(Jugador j) {
+        if (estadoActual == EstadoJuego.TERMINADO) return;
+        Jugador otro = (j == jugador1) ? jugador2 : jugador1;
+        this.abandonoDe = j.getNombre();
+        this.ganadorPartido = otro.getNombre();
+        this.estadoActual = EstadoJuego.TERMINADO;
+        this.turnoActual = null;
+        this.quienDebeResponder = null;
+        System.out.println("🚪 " + j.getNombre() + " abandonó la partida. Gana " + otro.getNombre());
+    }
+
+    public int getEnvidoSeq() {
+        return envidoSeq;
+    }
+
+    public List<CantoEnvido> getEnvidoCantos() {
+        return envidoCantos;
+    }
+
+    public MuestraEnvido getEnvidoMostrar() {
+        return envidoMostrar;
+    }
+
+    public int getVersionAccion() {
+        return versionAccion;
+    }
+
+    public void incrementarVersion() {
+        this.versionAccion++;
+    }
+
+    public long getVenceTurnoEn() {
+        return venceTurnoEn;
+    }
+
+    public void setVenceTurnoEn(long venceTurnoEn) {
+        this.venceTurnoEn = venceTurnoEn;
+    }
+
+    /** Devuelve el tiempo extra pendiente y lo deja en cero (se usa una sola vez). */
+    public long consumirTiempoExtra() {
+        long extra = tiempoExtraMs;
+        tiempoExtraMs = 0;
+        return extra;
+    }
+
+    /**
+     * NUEVO: en la TERCERA baza, si el rival tiró un 4, el que contesta no puede cantar nada:
+     * solo tirar su última carta.
+     */
+    public boolean cartaEnMesaEsCuatro() {
+        return manoActual == 3 && cartasEnMesa.size() == 1 && cartasEnMesa.get(0).getNumero() == 4;
+    }
+
+    /** NUEVO: alguien tiene que hacer algo (tirar o responder), así que corre el reloj. */
+    public boolean esperaAccion() {
+        return estadoActual == EstadoJuego.ESPERANDO_CARTA
+                || estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_ENVIDO
+                || estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
+    }
+
+    /**
+     * NUEVO: se le terminaron los 15 segundos al que tenía que actuar.
+     * Si tenía que tirar carta se va al mazo; si tenía que responder, "no quiero".
+     */
+    public void tiempoAgotado() {
+        if (estadoActual == EstadoJuego.ESPERANDO_CARTA && turnoActual != null) {
+            Jugador j = turnoActual;
+            irseAlMazo(j);
+            this.ultimoEvento = "";
+        } else if ((estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_ENVIDO
+                || estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_TRUCO) && quienDebeResponder != null) {
+            Jugador j = quienDebeResponder;
+            responder(j, "no quiero");
+            this.ultimoEvento = "";
+        }
+    }
+
 
     //------------------------------------------------------------------------------
 
@@ -142,10 +337,14 @@ public class Partida {
 
         if (this.estadoActual == EstadoJuego.TERMINADO) return;
 
+        this.numeroRonda++;
         this.manoActual = 1;
         this.ganadorPrimera = null;
         this.ganadorSegunda = null;
         this.cartasEnMesa.clear();
+        this.resultadosBazas.clear();
+        this.abreBazas.clear();
+        this.envidoMostrar = null;
 
         // Reset Envido
         this.envidoCerrado = false;
@@ -157,6 +356,7 @@ public class Partida {
         this.puntosPropuestosTruco = 1;
         this.quienTieneElQuieroTruco = null;
         this.trucoGritadoPendiente = false;
+        this.ultimoQueCantoTruco = null;
         this.ultimoGrito = "";
 
         // Reset Estados
@@ -166,6 +366,7 @@ public class Partida {
         repartirCartas();
         this.turnoActual = mano;
         this.elQueAbrioLaMano = mano;
+        this.ultimoEvento = "";
 
         System.out.println("--- Nueva ronda iniciada. Turno de: " + turnoActual.getNombre() + " ---");
     }
@@ -183,6 +384,10 @@ public class Partida {
         if (j == turnoActual && indiceCarta >= 0 && indiceCarta < j.getMano().size()) {
             Carta cartaTirada = j.jugarCarta(indiceCarta);
             cartasEnMesa.add(cartaTirada);
+            if (cartasEnMesa.size() == 1) {
+                abreBazas.add(j.getNombre()); // el que abre la baza (su carta va abajo en la pila)
+            }
+            this.ultimoEvento = "";
             System.out.println(j.getNombre() + " tiró " + cartaTirada);
 
             if (cartasEnMesa.size() == 2) {
@@ -203,16 +408,29 @@ public class Partida {
     }
 
     // --- LÓGICA DE GRITOS (Cantar) ---
-    public void cantarEnvido(Jugador elQueCanta, String tipoGrito) {
+
+    /** Devuelve true si el canto se aceptó. */
+    public boolean cantarEnvido(Jugador elQueCanta, String tipoGrito) {
         if (estadoActual == EstadoJuego.TERMINADO) {
             System.out.println("La partida ya terminó. No se pueden realizar más acciones.");
-            return;
+            return false;
         }
 
         // El envido solo se puede cantar en la primera mano y si no se cerró antes
         if (manoActual != 1 || envidoCerrado) {
             System.out.println("No se puede cantar envido ahora.");
-            return;
+            return false;
+        }
+
+        // NUEVO: con el truco ya querido no se puede cantar envido
+        if (puntosEnJuegoTruco > 1) {
+            System.out.println("No se puede cantar envido: el truco ya está querido.");
+            return false;
+        }
+
+        // NUEVO: después de una falta envido no hay nada más para cantar
+        if ("FALTA ENVIDO".equals(ultimoGrito) && estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_ENVIDO) {
+            return false;
         }
 
         // 1. IMPORTANTE: Guardamos quién tenía el turno original
@@ -238,13 +456,17 @@ public class Partida {
             case "falta envido":
                 puntosEnJuegoEnvido = calcularPuntosFaltaEnvido();
                 break;
+            default:
+                return false;
         }
 
         // 4. Cambio de estado y asignación de respuesta
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_ENVIDO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
         this.ultimoGrito = tipoGrito.toUpperCase();
+        decir(elQueCanta, tipoGrito.toUpperCase());
         System.out.println("📣 " + elQueCanta.getNombre() + " cantó " + tipoGrito.toUpperCase());
+        return true;
     }
 
     public void cantarTruco(Jugador elQueCanta, String tipoGrito) {
@@ -277,7 +499,9 @@ public class Partida {
         // Actualizamos los estados para que el otro jugador tenga que responder
         this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
         this.quienDebeResponder = (elQueCanta == jugador1) ? jugador2 : jugador1;
+        this.ultimoQueCantoTruco = elQueCanta;
         this.ultimoGrito = tipoGrito.toUpperCase();
+        decir(elQueCanta, tipoGrito.toUpperCase());
     }
 
     public void irseAlMazo(Jugador j) {
@@ -302,6 +526,8 @@ public class Partida {
             System.out.println("🏳️ " + j.getNombre() + " se fue al mazo. El rival gana " + puntosACobrar);
         }
 
+        decir(j, "ME VOY AL MAZO");
+        this.ultimoEvento = "";
         finalizarRonda(ganador, puntosACobrar);
     }
 
@@ -316,11 +542,13 @@ public class Partida {
             return;
         }
 
-        // --- CASO ESPECIAL: Envido como respuesta al Truco ---
+        // --- CASO ESPECIAL: Envido como respuesta al Truco ("el envido está primero") ---
         if (estadoActual == EstadoJuego.ESPERANDO_RESPUESTA_TRUCO && esUnRecantoDeEnvido(respuesta)) {
-            System.out.println("⚠️ El Truco queda en pausa. Primero resolvemos el Envido.");
-            this.trucoGritadoPendiente = true; // Guardamos en memoria que hay un Truco pendiente
-            cantarEnvido(j, respuesta); // Esto cambia el estado a ESPERANDO_RESPUESTA_ENVIDO
+            // ARREGLO: solo dejamos el truco en pausa si el envido realmente se pudo cantar
+            if (cantarEnvido(j, respuesta)) {
+                System.out.println("⚠️ El Truco queda en pausa. Primero resolvemos el Envido.");
+                this.trucoGritadoPendiente = true;
+            }
             return;
         }
 
@@ -333,7 +561,10 @@ public class Partida {
 
     private void procesarRespuestaEnvido(Jugador j, String respuesta) {
         if (respuesta.equalsIgnoreCase("quiero")) {
+            decir(j, "QUIERO");
             Jugador ganador = definirGanadorEnvido();
+            cantarTantos();
+            this.ultimoEvento = "";
             sumarPuntosJugador(ganador, puntosEnJuegoEnvido);
             this.envidoCerrado = true;
             this.quienDebeResponder = null;
@@ -346,8 +577,10 @@ public class Partida {
             volverAlEstadoAnterior(j);
 
         } else if (respuesta.equalsIgnoreCase("no quiero")) {
+            decir(j, "NO QUIERO");
             Jugador elQueCanto = (j == jugador1) ? jugador2 : jugador1;
             int puntosParaElQueCanto = (puntosAnterioresEnvido == 0) ? 1 : puntosAnterioresEnvido;
+            this.ultimoEvento = "";
             sumarPuntosJugador(elQueCanto, puntosParaElQueCanto);
             this.envidoCerrado = true;
             this.quienDebeResponder = null;
@@ -359,7 +592,8 @@ public class Partida {
 
             volverAlEstadoAnterior(j);
 
-        } else {
+        } else if (esUnRecantoDeEnvido(respuesta)) {
+            // ARREGLO: antes cualquier texto raro (ej "truco") se tomaba como recanto de envido
             cantarEnvido(j, respuesta);
         }
     }
@@ -383,18 +617,21 @@ public class Partida {
         }
 
         if (trucoGritadoPendiente) {
+            // ARREGLO: responde el truco el rival de quien lo cantó (antes dependía de quién cerró el envido)
             this.estadoActual = EstadoJuego.ESPERANDO_RESPUESTA_TRUCO;
-            this.quienDebeResponder = (j == jugador1) ? jugador2 : jugador1;
+            Jugador cantor = (ultimoQueCantoTruco != null) ? ultimoQueCantoTruco : ((j == jugador1) ? jugador1 : jugador2);
+            this.quienDebeResponder = (cantor == jugador1) ? jugador2 : jugador1;
+            // ARREGLO: volvemos a dejar el grito del truco para que el front muestre los botones correctos
+            this.ultimoGrito = nombreNivelTruco(puntosPropuestosTruco);
         } else {
             this.estadoActual = EstadoJuego.ESPERANDO_CARTA;
             this.turnoActual = this.jugadorQueTeniaElTurnoAntesDelEnvido;
+            this.ultimoGrito = "";
         }
     }
 
     private boolean rondaDeberiaFinalizar() {
-        // Si estamos en la mano 3 y ya hay cartas en la mesa de esta mano
-        // O si alguien ya ganó 2 manos de 3.
-        // Una forma simple es ver si los jugadores ya no tienen cartas:
+        // Si los jugadores ya no tienen cartas, la ronda terminó
         return jugador1.getMano().isEmpty() && jugador2.getMano().isEmpty();
     }
 
@@ -402,12 +639,15 @@ public class Partida {
         System.out.println("⚖️ MATEMÁTICA - Respuesta recibida: " + respuesta);
 
         if (respuesta.equalsIgnoreCase("quiero")) {
+            decir(j, "QUIERO");
             // Si acepta, oficializamos la apuesta
             this.puntosEnJuegoTruco = this.puntosPropuestosTruco;
 
-            this.quienTieneElQuieroTruco = (j == jugador1) ? jugador1 : jugador2;
+            this.quienTieneElQuieroTruco = j;
             this.quienDebeResponder = null;
             this.trucoGritadoPendiente = false;
+            this.ultimoGrito = "";
+            this.ultimoEvento = "";
 
             if (rondaDeberiaFinalizar()) {
                 Jugador ganadorRonda = (ganadorPrimera != null) ? ganadorPrimera : this.mano;
@@ -417,6 +657,7 @@ public class Partida {
             }
 
         } else if (respuesta.equalsIgnoreCase("no quiero")) {
+            decir(j, "NO QUIERO");
             Jugador ganador = (j == jugador1) ? jugador2 : jugador1;
 
             // LA LÍNEA CRÍTICA: Cobramos 1 punto menos de lo que se propuso
@@ -424,6 +665,7 @@ public class Partida {
 
             System.out.println("⚖️ MATEMÁTICA - No quiso. Se habían propuesto: " + this.puntosPropuestosTruco + " -> El ganador cobra: " + puntosACobrar);
 
+            this.ultimoEvento = "";
             finalizarRonda(ganador, puntosACobrar);
 
         } else if (esUnRecantoDeTruco(respuesta)) {
@@ -435,6 +677,10 @@ public class Partida {
     public void procesarResultadoMano(Jugador ganadorMano) {
         System.out.println(
                 "Resultado Mano " + manoActual + ": " + (ganadorMano == null ? "Parda" : ganadorMano.getNombre()));
+
+        // NUEVO: guardamos quién ganó cada baza para dibujarlo
+        resultadosBazas.add(ganadorMano == null ? "PARDA" : ganadorMano.getNombre());
+        this.ultimoEvento = "";
 
         if (manoActual == 1) {
             ganadorPrimera = ganadorMano;
@@ -471,6 +717,10 @@ public class Partida {
     }
 
     private void finalizarRonda(Jugador ganadorRonda, int puntosAñadir) {
+        // NUEVO: guardamos el resumen para el cartel de fin de ronda
+        this.ganadorUltimaRonda = ganadorRonda.getNombre();
+        this.puntosUltimaRonda = puntosAñadir;
+
         // 1. Sumamos los puntos
         sumarPuntosJugador(ganadorRonda, puntosAñadir);
 
@@ -482,13 +732,12 @@ public class Partida {
             return;
         }
 
-        // 3. 👇 ACÁ CAMBIA LA OPCIÓN 2 👇
-        // En vez de rotar y repartir ya mismo, ponemos pausa para que el frontend respire
+        // 3. Pausa entre manos: el servicio reparte solo después de unos segundos
         this.estadoActual = EstadoJuego.ENTRE_MANOS;
         this.turnoActual = null; // Nadie puede tirar cartas en el entretiempo
         this.quienDebeResponder = null;
 
-        System.out.println("⏳ Ronda terminada. Esperando confirmación del frontend para repartir...");
+        System.out.println("⏳ Ronda terminada. Repartiendo en unos segundos...");
     }
 
     private void finalizarRonda(Jugador ganadorRonda) {
@@ -521,15 +770,54 @@ public class Partida {
     }
 
     private void sumarPuntosJugador(Jugador j, int cantidad) {
-        j.sumarPuntos(cantidad);
-        System.out.println("📈 Puntos para " + j.getNombre() + ": +" + cantidad);
+        // NUEVO: nunca pasamos del máximo del partido
+        int aSumar = Math.min(cantidad, Math.max(0, puntosPartido - j.getPuntos()));
+        j.sumarPuntos(aSumar);
+        System.out.println("📈 Puntos para " + j.getNombre() + ": +" + aSumar);
 
         if (j.getPuntos() >= puntosPartido) {
             System.out.println("🏆 ¡CAMPEÓN: " + j.getNombre().toUpperCase() + "!");
             this.estadoActual = EstadoJuego.TERMINADO;
+            this.ganadorPartido = j.getNombre();
             this.quienDebeResponder = null; // Limpieza vital
             this.turnoActual = null;        // Limpieza vital
         }
+    }
+
+    /**
+     * NUEVO: como en la mesa de verdad, el mano dice sus tantos primero.
+     * El pie solo muestra los suyos si le gana; si no, dice "SON BUENAS" y no revela nada.
+     * (En caso de empate gana el mano, así que el pie también dice "son buenas".)
+     */
+    private void cantarTantos() {
+        Jugador pie = (mano == jugador1) ? jugador2 : jugador1;
+        int tantosMano = mano.calcularEnvido();
+        int tantosPie = pie.calcularEnvido();
+
+        Jugador ganador = tantosPie > tantosMano ? pie : mano;
+        envidoMostrar = new MuestraEnvido(ganador.getNombre(), ganador.calcularEnvido(), List.copyOf(ganador.cartasDelEnvido()));
+
+        envidoCantos = new ArrayList<>();
+        envidoCantos.add(new CantoEnvido(mano.getNombre(), String.valueOf(tantosMano)));
+        envidoCantos.add(new CantoEnvido(pie.getNombre(), tantosPie > tantosMano ? String.valueOf(tantosPie) : "SON BUENAS"));
+        envidoSeq++;
+        // Mientras se muestran las nubes no le corre el reloj al que tiene que jugar
+        tiempoExtraMs = TIEMPO_NUBES_ENVIDO_MS;
+    }
+
+    /** NUEVO: registra lo que dijo un jugador para que el front muestre el globo de diálogo. */
+    private void decir(Jugador j, String texto) {
+        this.cantoSeq++;
+        this.cantoTexto = texto;
+        this.cantoDe = j.getNombre();
+    }
+
+    private static String nombreNivelTruco(int nivel) {
+        return switch (nivel) {
+            case 3 -> "RETRUCO";
+            case 4 -> "VALE CUATRO";
+            default -> "TRUCO";
+        };
     }
 
     public void cambiarTurno() {
@@ -573,18 +861,14 @@ public class Partida {
     }
 
 
-
-    // Agregá este método al final de tu clase Partida.java
     public void avanzarSiguienteMano() {
         // Candado de seguridad: solo avanzamos si realmente estábamos esperando
         if (this.estadoActual != EstadoJuego.ENTRE_MANOS) {
             return;
         }
 
-        // Ahora sí, hacemos lo que antes hacíamos automático
         rotarRepartidor();
         empezarRonda();
     }
 
 }
-

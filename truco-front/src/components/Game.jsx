@@ -1,506 +1,491 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import { API_URL, WS_URL, obtenerUsuario, obtenerToken, pedirConSesion, borrarUsuario, leerError } from "../config";
+import Mesa from "./truco/Mesa";
+import Navegacion, { Encabezado } from "./Navegacion";
+import { pesos, Hoja, BotonPrincipal, Aviso } from "./plata";
 
+const RAPIDOS = [1000, 5000, 10000, 50000, 100000];
+
+async function pedir(url, opciones) {
+  const res = await pedirConSesion(url, opciones);
+  if (!res.ok) throw new Error(await leerError(res, `Error ${res.status}`));
+  const texto = await res.text();
+  return texto ? JSON.parse(texto) : null;
+}
+
+const mensajeDe = (e) => (e.message === "Failed to fetch" ? "No se pudo conectar con el servidor" : e.message);
+
+// ==========================================================================
+// Hoja para armar una mesa: monto y a cuántos puntos
+// ==========================================================================
+function HojaCrear({ montos, comision, saldo, onCerrar, onCreada }) {
+  const [indice, setIndice] = useState(() => Math.max(0, montos.indexOf(1000)));
+  const [puntos, setPuntos] = useState(30);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+
+  const monto = montos[indice];
+  const premio = monto * 2 * (1 - comision / 100);
+  const alcanza = saldo >= monto;
+
+  const crear = async () => {
+    setCargando(true);
+    setError("");
+    try {
+      await pedir(`${API_URL}/api/truco/mesas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monto, puntos }),
+      });
+      onCreada();
+    } catch (e) {
+      setError(mensajeDe(e));
+      setCargando(false);
+    }
+  };
+
+  const BotonPaso = ({ delta, children }) => (
+    <button
+      onClick={() => setIndice((i) => Math.min(montos.length - 1, Math.max(0, i + delta)))}
+      disabled={(delta < 0 && indice === 0) || (delta > 0 && indice === montos.length - 1)}
+      className="shrink-0 w-12 h-12 rounded-full bg-white/10 hover:bg-white/15 active:scale-90 disabled:opacity-30 grid place-items-center text-2xl font-light transition"
+      aria-label={delta < 0 ? "Menos" : "Más"}
+    >
+      {children}
+    </button>
+  );
+
+  return (
+    <Hoja titulo="Nueva mesa" onCerrar={onCerrar}>
+      <p className="text-xs font-semibold text-white/60 mb-2">¿Cuánto se juega cada uno?</p>
+      <div className="flex items-center gap-3">
+        <BotonPaso delta={-1}>−</BotonPaso>
+        <p className="flex-1 text-center text-4xl font-black tracking-tight tabular-nums">{pesos.format(monto).replace(",00", "")}</p>
+        <BotonPaso delta={1}>+</BotonPaso>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={montos.length - 1}
+        value={indice}
+        onChange={(e) => setIndice(Number(e.target.value))}
+        className="w-full mt-4 accent-amber-300"
+        aria-label="Monto"
+      />
+      <div className="flex gap-2 mt-2 overflow-x-auto -mx-1 px-1 pb-1">
+        {RAPIDOS.map((v) => (
+          <button
+            key={v}
+            onClick={() => setIndice(montos.indexOf(v))}
+            className={`shrink-0 h-8 px-3 rounded-full text-xs font-semibold transition ${
+              monto === v ? "bg-amber-300 text-neutral-900" : "bg-white/10 hover:bg-white/15"
+            }`}
+          >
+            {v >= 1000 ? `${v / 1000}k` : v}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs font-semibold text-white/60 mt-5 mb-2">¿A cuántos puntos?</p>
+      <div className="grid grid-cols-2 p-1 rounded-full bg-white/[.06] ring-1 ring-white/10 text-sm font-bold">
+        {[15, 30].map((p) => (
+          <button
+            key={p}
+            onClick={() => setPuntos(p)}
+            className={`h-10 rounded-full transition ${puntos === p ? "bg-white text-neutral-900" : "text-white/60"}`}
+          >
+            A {p}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5 rounded-2xl bg-white/[.06] ring-1 ring-white/10 px-4 py-3 flex items-center justify-between">
+        <span className="text-sm text-white/60">Premio para el ganador</span>
+        <span className="text-lg font-black text-emerald-300 tabular-nums">{pesos.format(premio)}</span>
+      </div>
+
+      {!alcanza && <p className="text-sm text-rose-300 mt-3">No te alcanza el saldo ({pesos.format(saldo)}).</p>}
+      {error && <p className="text-sm text-rose-300 mt-3">{error}</p>}
+
+      <BotonPrincipal
+        cargando={cargando}
+        disabled={!alcanza}
+        onClick={crear}
+        className="mt-4 bg-amber-300 text-neutral-900 hover:bg-amber-200"
+      >
+        Crear mesa
+      </BotonPrincipal>
+      <p className="text-[11px] text-center text-white/40 mt-2">
+        Se descuenta de tu saldo ahora. Si cancelás antes de que entre alguien, te lo devolvemos.
+      </p>
+    </Hoja>
+  );
+}
+
+// ==========================================================================
+// Tarjetas de la sala
+// ==========================================================================
+function TarjetaMesa({ m, onJugar }) {
+  return (
+    <li className="rounded-3xl bg-white/[.05] ring-1 ring-white/10 p-4 flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-2xl font-black tracking-tight tabular-nums">{pesos.format(m.monto).replace(",00", "")}</p>
+        <p className="text-xs text-white/50 mt-0.5 truncate">
+          A {m.puntos} · de <span className="text-white/80 font-semibold">{m.creador}</span>
+        </p>
+        <p className="text-xs text-emerald-300/90 mt-1 tabular-nums">Premio {pesos.format(m.premio)}</p>
+      </div>
+      <button
+        onClick={() => onJugar(m)}
+        className="shrink-0 h-11 px-6 rounded-full font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition"
+      >
+        Jugar
+      </button>
+    </li>
+  );
+}
+
+function MiMesa({ m, onCancelar, cancelando }) {
+  return (
+    <div className="rounded-3xl p-4 bg-gradient-to-br from-amber-300/15 to-amber-300/[.04] ring-1 ring-amber-300/30 mb-5">
+      <div className="flex items-center gap-4">
+        <div className="w-10 h-10 shrink-0 rounded-full border-[3px] border-amber-300/25 border-t-amber-300 animate-spin" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-amber-200">Tu mesa · esperando rival</p>
+          <p className="text-2xl font-black tracking-tight tabular-nums">
+            {pesos.format(m.monto).replace(",00", "")} <span className="text-sm font-semibold text-white/50">a {m.puntos}</span>
+          </p>
+        </div>
+        <button
+          onClick={onCancelar}
+          disabled={cancelando}
+          className="shrink-0 h-10 px-4 rounded-full text-sm font-semibold bg-white/10 hover:bg-white/15 disabled:opacity-50 active:scale-95 transition"
+        >
+          {cancelando ? "…" : "Cancelar"}
+        </button>
+      </div>
+      <p className="text-[11px] text-white/45 mt-3">
+        Cuando alguien entre, arranca la partida. Si te gusta otra mesa, podés entrar: la tuya se cancela sola.
+      </p>
+    </div>
+  );
+}
+
+// ==========================================================================
+// Pantalla de Mesas + partida
+// ==========================================================================
 export default function Juego() {
-  const [mesaId, setMesaId] = useState(null);
-  const [inputMesaId, setInputMesaId] = useState("");
-  const [partida, setPartida] = useState(null);
-  const [stompClient, setStompClient] = useState(null);
-  const [jugadorAsignado, setJugadorAsignado] = useState(null);
+  const navigate = useNavigate();
+  // Se lee una sola vez: si en otra pestaña entra otra cuenta, esta pestaña sigue siendo la misma persona
+  const [usuario] = useState(() => obtenerUsuario());
 
-  // ==========================================
-  // 1. CONEXIÓN INICIAL Y WEBSOCKETS
-  // ==========================================
+  const [sala, setSala] = useState(null); // { mesas, esperando, jugando, saldo }
+  const [opciones, setOpciones] = useState(null); // { montos, comision }
+  const [errorSala, setErrorSala] = useState("");
+  const [creando, setCreando] = useState(false);
+  const [aJugar, setAJugar] = useState(null);
+  const [entrando, setEntrando] = useState(false);
+  const [errorEntrar, setErrorEntrar] = useState("");
+  const [cancelando, setCancelando] = useState(false);
+  const [aviso, setAviso] = useState("");
+
+  const [mesa, setMesa] = useState(null); // { mesaId }
+  const [vista, setVista] = useState(null);
+  const [conectado, setConectado] = useState(false);
+  const clienteRef = useRef(null);
+
   useEffect(() => {
-    if (!mesaId) return;
+    if (!usuario) navigate("/");
+  }, [usuario, navigate]);
 
-    const traerEstadoInicial = async () => {
-      try {
-        const res = await fetch(
-          `https://trucoclub-backend.onrender.com/api/truco/estado/${mesaId}`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setPartida(data);
-        }
-      } catch (err) {
-        console.error("Error al traer estado inicial:", err);
-      }
-    };
+  const mostrarAviso = (t) => {
+    setAviso(t);
+    setTimeout(() => setAviso(""), 2400);
+  };
 
-    traerEstadoInicial();
+  // ==========================================
+  // 1. SALA: se actualiza cada 2 segundos
+  // ==========================================
+  const cargarSala = useCallback(async () => {
+    try {
+      const s = await pedir(`${API_URL}/api/truco/mesas`);
+      setSala(s);
+      setErrorSala("");
+      // Si entró alguien a mi mesa (o recargué la página jugando), voy a la partida
+      if (s.jugando) setMesa((actual) => actual ?? { mesaId: s.jugando });
+    } catch (e) {
+      setErrorSala(mensajeDe(e));
+    }
+  }, []);
 
-    const socket = new SockJS(
-      "https://trucoclub-backend.onrender.com/ws-truco",
-    );
+  useEffect(() => {
+    if (!usuario || mesa) return;
+    cargarSala();
+    const id = setInterval(cargarSala, 2000);
+    return () => clearInterval(id);
+  }, [usuario, mesa, cargarSala]);
+
+  useEffect(() => {
+    if (!usuario) return;
+    pedir(`${API_URL}/api/truco/mesas/opciones`).then(setOpciones).catch(() => {});
+  }, [usuario]);
+
+  const miMesa = sala?.mesas.find((m) => m.mia);
+  const otras = sala?.mesas.filter((m) => !m.mia) ?? [];
+  const saldo = Number(sala?.saldo ?? 0);
+
+  const cancelarMiMesa = async () => {
+    if (!miMesa) return;
+    setCancelando(true);
+    try {
+      await pedir(`${API_URL}/api/truco/mesas/${miMesa.mesaId}/cancelar`, { method: "POST" });
+      mostrarAviso("Mesa cancelada. Te devolvimos la plata.");
+    } catch (e) {
+      mostrarAviso(mensajeDe(e));
+    } finally {
+      setCancelando(false);
+      cargarSala();
+    }
+  };
+
+  const entrar = async () => {
+    setEntrando(true);
+    setErrorEntrar("");
+    try {
+      const info = await pedir(`${API_URL}/api/truco/mesas/${aJugar.mesaId}/unirse`, { method: "POST" });
+      setAJugar(null);
+      setMesa({ mesaId: info.mesaId });
+    } catch (e) {
+      setErrorEntrar(mensajeDe(e));
+      cargarSala();
+    } finally {
+      setEntrando(false);
+    }
+  };
+
+  // ==========================================
+  // 2. PARTIDA EN TIEMPO REAL
+  // ==========================================
+  const terminado = vista?.estado === "TERMINADO";
+
+  useEffect(() => {
+    if (!mesa) return;
+    let activo = true;
+
+    const traerEstado = () =>
+      pedir(`${API_URL}/api/truco/mesas/${mesa.mesaId}`)
+        .then((v) => activo && setVista(v))
+        .catch(() => {});
+
     const client = new Client({
-      webSocketFactory: () => socket,
-      reconnectDelay: 5000,
+      webSocketFactory: () => new SockJS(WS_URL),
+      // El token va en el CONNECT: el servidor sabe quién sos y no te deja jugar como otro
+      connectHeaders: { Authorization: `Bearer ${obtenerToken()}` },
+      reconnectDelay: 3000,
       onConnect: () => {
-        console.log("¡Conectado a los WebSockets del Truco!");
-        client.subscribe(`/topic/partida/${mesaId}`, (message) => {
-          const partidaActualizada = JSON.parse(message.body);
-          setPartida(partidaActualizada);
+        setConectado(true);
+        client.subscribe(`/user/queue/partida`, (msg) => {
+          const v = JSON.parse(msg.body);
+          if (v.mesaId === mesa.mesaId) setVista(v);
         });
+        traerEstado();
+      },
+      onWebSocketClose: () => setConectado(false),
+      onStompError: (frame) => {
+        if ((frame.headers?.message ?? "").toLowerCase().includes("sesi")) {
+          client.deactivate();
+          borrarUsuario();
+          navigate("/");
+        }
       },
     });
-
     client.activate();
-    setStompClient(client);
+    clienteRef.current = client;
 
     return () => {
-      if (client) client.deactivate();
+      activo = false;
+      client.deactivate();
+      clienteRef.current = null;
+      setConectado(false);
     };
-  }, [mesaId]);
+  }, [mesa, navigate]);
 
-  // ==========================================
-  // 2. EL CRONÓMETRO INVISIBLE (ENTRE MANOS)
-  // ==========================================
+  // Resincroniza cada 5 segundos por si se perdió algún mensaje del WebSocket (hasta que termina)
   useEffect(() => {
-    if (partida?.estadoActual === "ENTRE_MANOS") {
-      const timer = setTimeout(() => {
-        if (stompClient && stompClient.connected) {
-          stompClient.publish({
-            destination: `/app/partida/${mesaId}/siguiente`,
-            body: JSON.stringify({}),
-          });
-        }
-      }, 3000); // Frena 3 segundos para mostrar el resultado
+    if (!mesa || terminado) return;
+    let activo = true;
+    const traer = () =>
+      pedir(`${API_URL}/api/truco/mesas/${mesa.mesaId}`)
+        .then((v) => activo && setVista(v))
+        .catch(() => {});
+    traer();
+    const id = setInterval(traer, 5000);
+    return () => {
+      activo = false;
+      clearInterval(id);
+    };
+  }, [mesa, terminado]);
 
-      return () => clearTimeout(timer);
-    }
-  }, [partida?.estadoActual, stompClient, mesaId]);
-
-  // ==========================================
-  // 3. FUNCIONES DE ACCIÓN (DISPARADORES)
-  // ==========================================
-  const crearMesa = async () => {
-    try {
-      const res = await fetch(
-        "https://trucoclub-backend.onrender.com/api/truco/nueva?j1=Nacho&j2=IA&puntos=30",
-        { method: "POST" },
-      );
-      const id = await res.text();
-      setMesaId(id);
-      setJugadorAsignado("Nacho");
-    } catch (err) {
-      alert("Error: ¿Está el server de Java prendido?");
-    }
+  const enviar = (destino, cuerpo) => {
+    const c = clienteRef.current;
+    if (c && c.connected) c.publish({ destination: destino, body: JSON.stringify(cuerpo) });
   };
 
-  const unirseMesa = () => {
-    if (inputMesaId.trim() !== "") setMesaId(inputMesaId);
-    else alert("Por favor, ingresá un ID de mesa válido.");
+  const acciones = {
+    jugar: (indice) => enviar("/app/jugar", { mesaId: mesa.mesaId, jugador: usuario, cartaIndice: indice }),
+    cantar: (accion) => enviar("/app/cantar", { mesaId: mesa.mesaId, nombreJugador: usuario, accion }),
+    responder: (accion) => enviar("/app/responder", { mesaId: mesa.mesaId, nombreJugador: usuario, accion }),
   };
 
-  const tirarCarta = async (indice) => {
-    // Validaciones: ¿Es mi turno? ¿Estamos en la etapa de tirar cartas?
-    if (partida.estadoActual !== "ESPERANDO_CARTA") return;
-    if (partida.turnoActual?.nombre !== jugadorAsignado) {
-      alert("¡Pará un poco, no es tu turno!");
-      return;
-    }
-
-    if (stompClient && stompClient.connected) {
-      stompClient.publish({
-        destination: `/app/jugar`,
-        body: JSON.stringify({
-          mesaId: mesaId,
-          jugador: jugadorAsignado,
-          cartaIndice: indice,
-        }),
-      });
-    }
+  const salirDeLaMesa = () => {
+    setMesa(null);
+    setVista(null);
+    setSala(null);
   };
 
-  const gritar = (accion) => {
-    console.log(
-      `Intentando gritar: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
-    );
-
-    if (stompClient && stompClient.connected) {
-      stompClient.publish({
-        destination: "/app/cantar",
-        body: JSON.stringify({
-          mesaId,
-          nombreJugador: jugadorAsignado,
-          accion,
-        }),
-      });
-      console.log("Mensaje de grito enviado al servidor 🚀");
-    } else {
-      console.error("No hay conexión con el WebSocket :(");
+  // Abandonar: el servidor termina la partida para los dos y gana el otro
+  const abandonarMesa = async () => {
+    const actual = mesa;
+    if (actual) {
+      try {
+        await pedirConSesion(`${API_URL}/api/truco/mesas/${actual.mesaId}/abandonar`, { method: "POST" });
+      } catch {
+        /* si falla, el reloj del servidor termina la partida igual */
+      }
     }
-  };
-
-  const responder = (accion) => {
-    console.log(
-      `Intentando responder: ${accion} en la mesa: ${mesaId} como ${jugadorAsignado}`,
-    );
-
-    if (stompClient && stompClient.connected) {
-      stompClient.publish({
-        destination: "/app/responder",
-        body: JSON.stringify({
-          mesaId,
-          nombreJugador: jugadorAsignado,
-          accion,
-        }),
-      });
-      console.log("Mensaje de respuesta enviado al servidor 🚀");
-    }
+    salirDeLaMesa();
   };
 
   // ==========================================
-  // 4. EXTRACCIÓN DE DATOS PARA DIBUJAR
+  // 3. PANTALLAS
   // ==========================================
-  let miJugador = null;
-  let rival = null;
-  let esMiTurno = false;
-  let meTocaResponder = false;
+  if (!usuario) return null;
 
-  if (partida && jugadorAsignado) {
-    const soyJ1 = partida.jugador1.nombre === jugadorAsignado;
-    miJugador = soyJ1 ? partida.jugador1 : partida.jugador2;
-    rival = soyJ1 ? partida.jugador2 : partida.jugador1;
-
-    esMiTurno = partida.turnoActual?.nombre === jugadorAsignado;
-    meTocaResponder = partida.quienDebeResponder?.nombre === jugadorAsignado;
+  if (mesa && vista) {
+    return <Mesa vista={vista} conectado={conectado} acciones={acciones} onSalir={salirDeLaMesa} onAbandonar={abandonarMesa} />;
   }
 
-  // ==========================================
-  // 5. RENDERIZADO VISUAL
-  // ==========================================
+  if (mesa) {
+    return (
+      <div className="min-h-[100dvh] bg-app grid place-items-center text-white/80">
+        <div className="w-10 h-10 rounded-full border-4 border-amber-300/30 border-t-amber-300 animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-neutral-900 text-white p-8 text-center font-sans">
-      <h1 className="text-4xl font-black text-green-500 mb-8 tracking-wider">
-        Truco Club - MESA ONLINE 🃏
-      </h1>
+    <div className="min-h-[100dvh] bg-app text-white pb-28">
+      <Encabezado />
 
-      {/* --- MENÚ DE ENTRADA --- */}
-      {!mesaId ? (
-        <div className="max-w-md mx-auto space-y-8">
+      <main className="max-w-md mx-auto px-4">
+        <div className="flex items-end justify-between mt-4 mb-5">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight">Mesas</h1>
+            <p className="text-xs text-white/50 mt-0.5 tabular-nums">Saldo {sala ? pesos.format(saldo) : "…"}</p>
+          </div>
           <button
-            onClick={crearMesa}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-colors text-lg"
+            onClick={() => setCreando(true)}
+            disabled={!opciones || !!miMesa}
+            className="h-11 px-5 rounded-full font-semibold bg-amber-300 text-neutral-900 hover:bg-amber-200 disabled:opacity-40 active:scale-95 transition flex items-center gap-1.5"
           >
-            Crear Nueva Mesa
+            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Crear mesa
           </button>
+        </div>
 
-          <div className="bg-neutral-800 p-6 rounded-xl border border-neutral-700 shadow-xl">
-            <p className="mb-4 text-neutral-300 font-medium">
-              ¿Ya tenés el ID de una mesa?
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ej: mesa-123"
-                value={inputMesaId}
-                onChange={(e) => setInputMesaId(e.target.value)}
-                className="flex-1 bg-neutral-900 border border-neutral-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+        {miMesa && <MiMesa m={miMesa} onCancelar={cancelarMiMesa} cancelando={cancelando} />}
+
+        {errorSala && !sala && <p className="text-sm text-rose-300">{errorSala}</p>}
+
+        {!sala && !errorSala && (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-24 rounded-3xl bg-white/5 animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {sala && otras.length === 0 && (
+          <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-8 text-center">
+            <p className="font-semibold">No hay mesas abiertas</p>
+            <p className="text-sm text-white/50 mt-1">{miMesa ? "Esperá a que alguien entre a la tuya." : "Creá una y esperá a que alguien entre."}</p>
+          </div>
+        )}
+
+        {otras.length > 0 && (
+          <ul className="space-y-3">
+            {otras.map((m) => (
+              <TarjetaMesa
+                key={m.mesaId}
+                m={m}
+                onJugar={(x) => {
+                  setErrorEntrar("");
+                  setAJugar(x);
+                }}
               />
-              <button
-                onClick={unirseMesa}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg transition-colors"
-              >
-                Unirse
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="max-w-4xl mx-auto flex flex-col items-center">
-          <div className="bg-neutral-800 px-6 py-2 rounded-full mb-6 border border-neutral-700">
-            Mesa ID:{" "}
-            <span className="text-yellow-400 font-mono font-bold select-all">
-              {mesaId}
-            </span>
-          </div>
+            ))}
+          </ul>
+        )}
+      </main>
 
-          {/* --- SELECCIÓN DE JUGADOR --- */}
-          {partida && !jugadorAsignado && (
-            <div className="bg-neutral-800 p-8 rounded-2xl border border-neutral-700 shadow-2xl max-w-sm w-full my-10">
-              <h3 className="text-xl font-bold mb-6">
-                ¿Quién sos en esta pestaña?
-              </h3>
-              <div className="flex flex-col gap-4">
-                <button
-                  onClick={() => setJugadorAsignado(partida.jugador1.nombre)}
-                  className="bg-green-600 hover:bg-green-500 font-bold py-3 rounded-lg transition-colors"
-                >
-                  {partida.jugador1.nombre}
-                </button>
-                <button
-                  onClick={() => setJugadorAsignado(partida.jugador2.nombre)}
-                  className="bg-red-600 hover:bg-red-500 font-bold py-3 rounded-lg transition-colors"
-                >
-                  {partida.jugador2.nombre}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* --- MESA DE JUEGO PRINCIPAL --- */}
-          {partida && jugadorAsignado && miJugador && rival && (
-            <div className="w-full flex flex-col items-center">
-              {/* ZONA RIVAL */}
-              <div className="w-full mb-4 flex flex-col items-center">
-                <h3 className="text-neutral-400 font-medium mb-2 uppercase tracking-widest text-sm">
-                  {rival.nombre} - Puntos:{" "}
-                  <span className="text-white font-bold">{rival.puntos}</span>
-                </h3>
-                {/* Cartas jugadas por el rival */}
-                <div className="flex justify-center gap-4 h-32 items-end">
-                  {rival.cartasJugadas.map((carta, index) => (
-                    <div
-                      key={index}
-                      className="w-20 h-28 bg-white text-slate-800 rounded-lg flex flex-col items-center justify-center shadow-xl border border-gray-300 font-bold text-lg rotate-[5deg] opacity-90"
-                    >
-                      <span>{carta.numero}</span>
-                      <span className="text-sm uppercase">{carta.palo}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* CENTRO DE LA MESA (Avisos de estado) */}
-              <div className="w-full max-w-2xl h-24 bg-green-800 border-4 border-green-950 rounded-2xl flex flex-col items-center justify-center shadow-inner mb-4 relative overflow-hidden">
-                {partida.estadoActual === "ESPERANDO_JUGADORES" && (
-                  <h2 className="text-yellow-300 font-bold animate-pulse">
-                    Esperando que se una el rival...
-                  </h2>
-                )}
-                {partida.estadoActual === "ENTRE_MANOS" && (
-                  <h2 className="text-white font-black text-xl animate-bounce">
-                    ¡Mano Terminada! Repartiendo... ⏳
-                  </h2>
-                )}
-                {partida.estadoActual === "TERMINADO" && (
-                  <h1 className="text-yellow-400 font-black text-2xl">
-                    🏆 ¡PARTIDO FINALIZADO! 🏆
-                  </h1>
-                )}
-                {partida.ultimoGrito &&
-                  partida.estadoActual !== "ENTRE_MANOS" && (
-                    <h2 className="text-white font-bold text-lg bg-black/50 px-4 py-1 rounded-full uppercase tracking-wider">
-                      🗣️ {partida.ultimoGrito}
-                    </h2>
-                  )}
-              </div>
-
-              {/* ZONA PROPIA */}
-              <div className="w-full mt-4 flex flex-col items-center">
-                {/* Cartas jugadas por mí */}
-                <div className="flex justify-center gap-4 h-32 items-start mb-4">
-                  {miJugador.cartasJugadas.map((carta, index) => (
-                    <div
-                      key={index}
-                      className="w-20 h-28 bg-white text-slate-800 rounded-lg flex flex-col items-center justify-center shadow-xl border border-gray-300 font-bold text-lg rotate-[-5deg]"
-                    >
-                      <span>{carta.numero}</span>
-                      <span className="text-sm uppercase">{carta.palo}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <h3 className="text-neutral-400 font-medium mb-4 uppercase tracking-widest text-sm">
-                  Vos ({miJugador.nombre}) - Puntos:{" "}
-                  <span className="text-green-400 font-bold">
-                    {miJugador.puntos}
-                  </span>
-                </h3>
-
-                {/* Cartas en mano */}
-                <div className="flex justify-center gap-4 mb-8">
-                  {miJugador.mano.map((carta, index) => (
-                    <div
-                      key={index}
-                      onClick={() => tirarCarta(index)}
-                      className={`w-24 h-36 bg-white text-slate-900 border-4 rounded-xl flex flex-col items-center justify-center shadow-lg transition-all duration-200 
-                        ${esMiTurno && partida.estadoActual === "ESPERANDO_CARTA" ? "cursor-pointer hover:-translate-y-4 border-transparent hover:border-green-500" : "opacity-70 cursor-not-allowed border-transparent"}`}
-                    >
-                      <span className="text-3xl font-black">
-                        {carta.numero}
-                      </span>
-                      <span className="text-md font-bold uppercase">
-                        {carta.palo}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* --- BOTONERA CONDICIONAL (TAILWIND) --- */}
-                <div className="h-20 flex items-center justify-center">
-                  {/* CASO A: Botones de turno normal */}
-                  {partida.estadoActual === "ESPERANDO_CARTA" && esMiTurno && (
-                    <div className="flex gap-3">
-                      {/* --- BOTONES DE ENVIDO --- */}
-                      {partida.manoActual === 1 && !partida.envidoCerrado && (
-                        <>
-                          <button
-                            onClick={() => gritar("envido")}
-                            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Envido
-                          </button>
-                          <button
-                            onClick={() => gritar("real envido")}
-                            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Real Envidoooo
-                          </button>
-                          <button
-                            onClick={() => gritar("falta envido")}
-                            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Falta Envido
-                          </button>
-                        </>
-                      )}
-
-                      {/* --- BOTONES DE TRUCO (INTELIGENTES) --- */}
-                      {/* Solo muestro Truco si estamos en nivel 1 (nadie cantó) */}
-                      {partida.puntosEnJuegoTruco === 1 && (
-                        <button
-                          onClick={() => gritar("truco")}
-                          className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
-                        >
-                          Truco
-                        </button>
-                      )}
-
-                      {/* Solo muestro Retruco si estamos en nivel 2 Y yo tengo el quiero */}
-                      {partida.puntosEnJuegoTruco === 2 &&
-                        partida.quienTieneElQuieroTruco?.nombre ===
-                          miJugador.nombre && (
-                          <button
-                            onClick={() => gritar("retruco")}
-                            className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
-                          >
-                            Retruco
-                          </button>
-                        )}
-
-                      {/* Solo muestro Vale Cuatro si estamos en nivel 3 Y yo tengo el quiero */}
-                      {partida.puntosEnJuegoTruco === 3 &&
-                        partida.quienTieneElQuieroTruco?.nombre ===
-                          miJugador.nombre && (
-                          <button
-                            onClick={() => gritar("vale cuatro")}
-                            className="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded font-bold transition"
-                          >
-                            Vale Cuatro
-                          </button>
-                        )}
-
-                      <button
-                        onClick={() => gritar("irse_al_mazo")}
-                        className="bg-neutral-700 hover:bg-neutral-600 px-4 py-2 rounded font-bold transition text-neutral-300 border border-neutral-600"
-                      >
-                        Al Mazo
-                      </button>
-                    </div>
-                  )}
-
-                  {/* CASO B: Botones de respuesta a ENVIDO */}
-                  {partida.estadoActual === "ESPERANDO_RESPUESTA_ENVIDO" &&
-                    meTocaResponder && (
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => responder("quiero")}
-                          className="bg-green-600 hover:bg-green-500 px-6 py-2 rounded font-bold transition text-lg shadow-lg shadow-green-900/50"
-                        >
-                          Quiero
-                        </button>
-                        <button
-                          onClick={() => responder("no quiero")}
-                          className="bg-red-600 hover:bg-red-500 px-6 py-2 rounded font-bold transition text-lg shadow-lg shadow-red-900/50"
-                        >
-                          No Quiero
-                        </button>
-
-                        {/* Solución Error 1 y 3 (Envido infinito y botón faltante): 
-                          Solo mostramos "Envido" si los puntos en juego son menos de 4 (para cortar el Envido-Envido infinito)
-                          y si no cantaron Real ni Falta. */}
-                        {partida.puntosEnJuegoEnvido < 4 &&
-                          partida.ultimoGrito !== "REAL ENVIDO" &&
-                          partida.ultimoGrito !== "FALTA ENVIDO" && (
-                            <button
-                              onClick={() => responder("envido")}
-                              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                            >
-                              Envido
-                            </button>
-                          )}
-
-                        {/* Mostramos "Real Envido" a menos que ya hayan cantado Real Envido o Falta Envido */}
-                        {partida.ultimoGrito !== "REAL ENVIDO" &&
-                          partida.ultimoGrito !== "FALTA ENVIDO" && (
-                            <button
-                              onClick={() => responder("real envido")}
-                              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                            >
-                              Real Envido
-                            </button>
-                          )}
-
-                        {/* "Falta Envido" siempre aparece a menos que ya hayan cantado Falta Envido */}
-                        {partida.ultimoGrito !== "FALTA ENVIDO" && (
-                          <button
-                            onClick={() => responder("falta envido")}
-                            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Falta Envido
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                  {/* CASO C: Botones de respuesta a TRUCO */}
-                  {partida.estadoActual === "ESPERANDO_RESPUESTA_TRUCO" &&
-                    meTocaResponder && (
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => responder("quiero")}
-                          className="bg-green-600 hover:bg-green-500 px-6 py-2 rounded font-bold transition text-lg shadow-lg shadow-green-900/50"
-                        >
-                          Quiero
-                        </button>
-                        <button
-                          onClick={() => responder("no quiero")}
-                          className="bg-red-600 hover:bg-red-500 px-6 py-2 rounded font-bold transition text-lg shadow-lg shadow-red-900/50"
-                        >
-                          No Quiero
-                        </button>
-
-                        {/* Solución Error 2 y 3: Escalera obligatoria de Truco */}
-                        {partida.ultimoGrito === "TRUCO" && (
-                          <button
-                            onClick={() => responder("retruco")}
-                            className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Quiero Retruco
-                          </button>
-                        )}
-                        {partida.ultimoGrito === "RETRUCO" && (
-                          <button
-                            onClick={() => responder("vale cuatro")}
-                            className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded font-bold transition"
-                          >
-                            Quiero Vale Cuatro
-                          </button>
-                        )}
-
-                        {/* Si cantaron VALE CUATRO, no se dibuja ningún botón extra, cortando el bucle */}
-                      </div>
-                    )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      {creando && opciones && (
+        <HojaCrear
+          montos={opciones.montos}
+          comision={opciones.comision}
+          saldo={saldo}
+          onCerrar={() => setCreando(false)}
+          onCreada={() => {
+            setCreando(false);
+            cargarSala();
+          }}
+        />
       )}
+
+      {aJugar && (
+        <Hoja titulo="¿Entrar a esta mesa?" onCerrar={() => setAJugar(null)}>
+          <div className="rounded-2xl bg-white/[.06] ring-1 ring-white/10 px-4 divide-y divide-white/10 mb-4">
+            {[
+              ["Contra", aJugar.creador],
+              ["A", `${aJugar.puntos} puntos`],
+              ["Ponés", pesos.format(aJugar.monto)],
+              ["Premio si ganás", pesos.format(aJugar.premio)],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between py-2.5 text-sm">
+                <span className="text-white/50">{k}</span>
+                <span className={`font-semibold tabular-nums ${k === "Premio si ganás" ? "text-emerald-300" : ""}`}>{v}</span>
+              </div>
+            ))}
+          </div>
+          {miMesa && (
+            <p className="text-xs text-amber-200/90 mb-3">Tu mesa de {pesos.format(miMesa.monto)} se cancela y te devolvemos la plata.</p>
+          )}
+          {saldo + (miMesa ? Number(miMesa.monto) : 0) < Number(aJugar.monto) && (
+            <p className="text-sm text-rose-300 mb-3">No te alcanza el saldo ({pesos.format(saldo)}).</p>
+          )}
+          {errorEntrar && <p className="text-sm text-rose-300 mb-3">{errorEntrar}</p>}
+          <div className="space-y-2.5">
+            <BotonPrincipal
+              cargando={entrando}
+              disabled={saldo + (miMesa ? Number(miMesa.monto) : 0) < Number(aJugar.monto)}
+              onClick={entrar}
+              className="bg-emerald-500 hover:bg-emerald-400"
+            >
+              Sí, jugar
+            </BotonPrincipal>
+            <button onClick={() => setAJugar(null)} className="w-full h-12 rounded-full font-semibold bg-white/10 hover:bg-white/15">
+              Volver
+            </button>
+          </div>
+        </Hoja>
+      )}
+
+      <Aviso texto={aviso} />
+      <Navegacion />
     </div>
   );
 }

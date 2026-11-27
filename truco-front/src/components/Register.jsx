@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from "../config";
 
 export default function Registro() {
   const [formData, setFormData] = useState({
@@ -18,7 +19,7 @@ export default function Registro() {
     e.preventDefault();
     try {
       const response = await fetch(
-        "https://trucoclub-backend.onrender.com/api/auth/register",
+        `${API_URL}/api/auth/register`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

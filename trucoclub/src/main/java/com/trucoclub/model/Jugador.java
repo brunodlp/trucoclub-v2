@@ -19,6 +19,11 @@ public class Jugador {
         return nombre;
     }
 
+    // Se usa cuando el segundo jugador se sienta en una mesa ya creada
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+
     public int getPuntos() {
         return puntos;
     }
@@ -71,6 +76,40 @@ public class Jugador {
         }
 
         return maxPuntaje;
+    }
+
+    /**
+     * NUEVO: las cartas con las que se forma el envido (para mostrarlas al final de la ronda).
+     * Dos del mismo palo si tiene; si no, la carta que más vale para el envido.
+     */
+    public List<Carta> cartasDelEnvido() {
+        List<Carta> todas = new ArrayList<>();
+        if (mano != null) todas.addAll(mano);
+        if (cartasJugadas != null) todas.addAll(cartasJugadas);
+        if (todas.isEmpty()) return List.of();
+
+        List<Carta> mejores = List.of();
+        int mejor = -1;
+        for (int i = 0; i < todas.size(); i++) {
+            for (int j = i + 1; j < todas.size(); j++) {
+                Carta c1 = todas.get(i);
+                Carta c2 = todas.get(j);
+                if (c1.getPalo().equals(c2.getPalo())) {
+                    int valor = 20 + c1.getValorEnvido() + c2.getValorEnvido();
+                    if (valor > mejor) {
+                        mejor = valor;
+                        mejores = List.of(c1, c2);
+                    }
+                }
+            }
+        }
+        if (!mejores.isEmpty()) return mejores;
+
+        Carta alta = todas.get(0);
+        for (Carta c : todas) {
+            if (c.getValorEnvido() > alta.getValorEnvido()) alta = c;
+        }
+        return List.of(alta);
     }
 
     // Método para jugar una carta y sacarla de la mano

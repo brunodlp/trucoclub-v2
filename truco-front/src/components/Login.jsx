@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom"; // <-- Sumamos useNavigate
+import { API_URL, guardarSesion } from "../config";
 
 export default function Login() {
   const [formData, setFormData] = useState({ username: "", password: "" });
@@ -14,24 +15,25 @@ export default function Login() {
     e.preventDefault();
     try {
       const response = await fetch(
-        "https://trucoclub-backend.onrender.com/api/auth/login",
+        `${API_URL}/api/auth/login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(formData),
         },
       );
-      const data = await response.text();
-
       if (response.ok) {
+        // El servidor devuelve { token, username, rol }: guardamos la sesión
+        const { token, username, rol } = await response.json();
+        guardarSesion(username, token, rol);
         setMensaje({
-          texto: "¡Bienvenido al club! Llevándote a la mesa... 🃏",
+          texto: "¡Bienvenido a TrucoClub! 🃏",
           tipo: "exito",
         });
         // Espera 1.5 segundos para mostrar el mensaje lindo y te redirige
-        setTimeout(() => navigate("/juego"), 1500);
+        setTimeout(() => navigate("/inicio"), 1500);
       } else {
-        setMensaje({ texto: data, tipo: "error" });
+        setMensaje({ texto: await response.text(), tipo: "error" });
       }
     } catch (error) {
       setMensaje({ texto: "Error de conexión con el servidor", tipo: "error" });
