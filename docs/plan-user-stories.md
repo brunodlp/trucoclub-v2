@@ -12,10 +12,10 @@
 
 | # | Qué | Historia | Esfuerzo |
 |---|---|---|---|
-| 1 | Base de datos de producción funcionando (Supabase u otra) y probada de punta a punta | US-8.1 | Chico |
-| 2 | Sacar contraseñas, clave JWT y datos de pago del repo, todo por variables de entorno | US-8.3 | Chico |
-| 3 | Registro con **+18 y aceptar términos** (fecha de nacimiento y checkbox) y página de términos y condiciones | US-1.7 (versión mínima de US-9.6) | Chico |
-| 4 | **Pedir DNI y nombre real en el primer retiro**; el admin lo revisa al aprobar, como ya hace | US-9.6 (parcial) | Chico |
+| 1 | ✅ Base en Supabase (PostgreSQL) conectada. Falta: backups activados y prueba de punta a punta en producción | US-8.1 | Chico |
+| 2 | ⚠️ **Urgente:** la contraseña de Supabase quedó escrita en un comentario de `application.properties` y el repo es público. Cambiarla en Supabase y borrarla del archivo; revisar que la clave JWT y los datos de pago no tengan valores por defecto reales | US-8.3 | Chico |
+| 3 | Registro con **+18 y aceptar términos** (fecha de nacimiento y checkbox) y página de términos y condiciones. Hoy el alta es con Google o email (Supabase Auth) y no pide edad ni términos | US-1.7 (versión mínima de US-9.6) | Chico |
+| 4 | ✅ DNI pedido en el primer depósito o retiro (uno por cuenta). Falta: nombre real del titular | US-9.6 (parcial) | Chico |
 | 5 | Tests de la plata: apostar, premio, comisión, cancelar mesa, abandonar, depósito y retiro | US-8.2 (solo plata) | Medio |
 | 6 | Revisar que recargar la página o cortarse internet te devuelva a tu partida | US-3.9 (verificar) | Chico |
 | 7 | Filtro de nombres ofensivos al registrarse y al cambiar el nombre | US-9.5 | Chico |
@@ -45,16 +45,19 @@ TrucoClub es una plataforma para jugar **truco 1 vs 1 por plata**. El jugador ca
 
 | Área | Estado |
 |---|---|
-| Registro, login y sesión (JWT, 7 días) | ✅ |
+| Registro y login con Google o email (Supabase Auth) | ✅ |
 | Perfil (nombre, saldo, rol) | ✅ — la foto de perfil 🔜 |
 | Sala de mesas con apuesta y comisión | ✅ |
 | Partida en tiempo real (WebSocket): truco, envido, irse al mazo, turno de 15 s | ✅ — la flor 🔜 |
-| Depósitos y retiros con aprobación manual | ✅ |
+| Depósitos: el jugador elige el monto, tiene 10 min para transferir y se acredita solo si el CUIT coincide con su DNI | ✅ |
+| Retiros con aprobación manual | ✅ |
+| DNI por cuenta (se pide en el primer depósito o retiro) | ✅ |
 | Notificaciones | ✅ |
 | Panel de admin (movimientos, ganancias, jugadores, bloqueo) | ✅ |
 | Ranking | 🔜 solo hay una pantalla de "Se viene" |
 | Objetivos/desafíos con premio | 🔜 solo hay ejemplos |
-| Base de datos en Supabase (PostgreSQL) | 🔜 el código solo soporta MySQL |
+| Base de datos en Supabase (PostgreSQL) | ✅ (MySQL local queda como perfil `mysql`) |
+| Backend desplegado | 🔜 hoy no corre en ningún lado |
 | Partidas que sobreviven a un reinicio del servidor | 🔜 viven en memoria; al reiniciar se anulan y se devuelve la plata |
 | Tests automáticos | 🔜 no hay ninguno |
 
@@ -62,7 +65,7 @@ TrucoClub es una plataforma para jugar **truco 1 vs 1 por plata**. El jugador ca
 
 ## Épica 1 — Cuenta y perfil
 
-- ✅ **US-1.1** Como visitante quiero registrarme con usuario y contraseña para poder jugar.
+- ✅ **US-1.1** Como visitante quiero registrarme con Google o con email y elegir mi nombre de usuario para poder jugar.
 - ✅ **US-1.2** Como jugador quiero iniciar sesión y que la sesión dure varios días para no loguearme siempre.
 - ✅ **US-1.3** Como jugador quiero ver mi perfil y mi saldo.
 - ✅ **US-1.4** Como jugador quiero cambiar mi nombre confirmando con mi contraseña.
@@ -70,8 +73,8 @@ TrucoClub es una plataforma para jugar **truco 1 vs 1 por plata**. El jugador ca
   - Acepta JPG/PNG de hasta 2 MB, se recorta cuadrada.
   - Se ve en la sala, en la mesa y en el ranking.
   - El campo `fotoUrl` ya existe en `Usuario`; falta la subida (puede ir a Supabase Storage).
-- 🔜 **US-1.6** Como jugador quiero recuperar mi contraseña si la olvido.
-  - Requiere guardar un email al registrarse.
+- 🟡 **US-1.6** Como jugador quiero recuperar mi contraseña si la olvido.
+  - El email ya se guarda (Supabase Auth). Falta confirmar que el flujo de recuperación esté activo en el front.
 - 🔜 **US-1.7** Como plataforma quiero que solo se registren mayores de 18 años que acepten los términos.
   - Checkbox de términos y declaración de edad en el registro, guardados con fecha.
 
@@ -107,7 +110,11 @@ TrucoClub es una plataforma para jugar **truco 1 vs 1 por plata**. El jugador ca
 ## Épica 4 — Plata: depósitos y retiros
 
 - ✅ **US-4.1** Como jugador quiero ver a qué cuenta transferir y los montos mínimos.
-- ✅ **US-4.2** Como jugador quiero informar un depósito con el número de operación.
+- ✅ **US-4.2** Como jugador quiero elegir el monto a depositar y tener 10 minutos para transferir.
+- ✅ **US-4.2b** Como jugador quiero que mi depósito se acredite solo cuando la transferencia viene de una cuenta a mi nombre (CUIT con mi DNI).
+  - Cada transferencia se acredita una sola vez aunque el aviso llegue repetido.
+- ✅ **US-4.2c** Como admin quiero ver las transferencias que no se pudieron identificar, asignarlas a un jugador o marcarlas como devueltas.
+- ✅ **US-4.2d** Como plataforma quiero un DNI por cuenta, pedido en el primer depósito o retiro.
 - ✅ **US-4.3** Como jugador quiero pedir un retiro a mi alias o CBU/CVU (hasta 2 por día).
 - ✅ **US-4.4** Como jugador quiero cancelar un pedido mío que esté pendiente.
 - ✅ **US-4.5** Como jugador quiero ver todos mis movimientos y su estado.
@@ -142,14 +149,13 @@ TrucoClub es una plataforma para jugar **truco 1 vs 1 por plata**. El jugador ca
 
 ## Épica 8 — Técnica e infraestructura
 
-- 🔜 **US-8.1** Como equipo queremos que el backend se conecte a Supabase (PostgreSQL).
-  - Agregar el driver `org.postgresql:postgresql` al `pom.xml`.
-  - Datasource por variables de entorno (`DB_URL`, `DB_USER`, `DB_PASSWORD`), con MySQL local por defecto.
-  - Sacar el dialecto fijo de MySQL (Hibernate lo detecta solo).
-  - `ArreglarColumnasEnum` usa SQL de MySQL: que no corra con PostgreSQL.
-  - En Render, usar el *session pooler* de Supabase (la conexión directa es solo IPv6).
+- ✅ **US-8.1** Como equipo queremos que el backend se conecte a Supabase (PostgreSQL).
+  - Hecho: driver de Postgres, *session pooler*, esquema `trucoclub` (`esquema_supabase.sql`), pool de 5 conexiones y perfil `mysql` para desarrollo local.
+  - Falta: activar backups y probarlo en producción.
 - 🔜 **US-8.2** Como equipo queremos tests de la lógica del truco (`Partida`) y de la plata (apuestas, premios, retiros).
-- 🔜 **US-8.3** Como equipo queremos sacar contraseñas y datos de pago del `application.properties` (todo por variables de entorno).
+- 🟡 **US-8.3** Como equipo queremos sacar contraseñas y datos de pago del `application.properties` (todo por variables de entorno).
+  - Ya existe `secretos.properties` (fuera de GitHub) para desarrollo y variables de entorno para producción.
+  - ⚠️ Pendiente urgente: la contraseña de Supabase sigue escrita en un comentario del archivo y el repo es público. Hay que cambiarla.
 - 🔜 **US-8.4** Como equipo queremos resolver las 15 vulnerabilidades que marca `npm audit` en el frontend.
 - 🔜 **US-8.5** Como equipo queremos reemplazar el README de plantilla por uno con cómo levantar el proyecto.
 

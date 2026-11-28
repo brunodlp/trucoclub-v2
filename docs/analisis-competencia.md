@@ -79,7 +79,9 @@ Una sola lista con todo mezclado:
 | Puntos | 15 / 30 | elegible ✅ |
 | Rango de montos | no se vio | $500 a $350.000 ✅ |
 | Ver partidas en juego | ✅ | ❌ |
-| Verificación de identidad | ✅ | ❌ |
+| Verificación de identidad | ✅ formulario de 8 campos | 🟡 DNI en el primer depósito o retiro; falta edad y términos |
+| Login con Google | no se vio | ✅ |
+| Depósito automático | no se vio | ✅ se acredita solo si el CUIT coincide con el DNI |
 | Avatares | ✅ | ❌ (campo preparado) |
 | Soporte en la app | ✅ botón flotante | ❌ |
 | Panel de admin y aprobación de pagos | no se ve | ✅ |
@@ -105,7 +107,7 @@ Una sola lista con todo mezclado:
 - **Botón "Jugar rápido"**: elegís el monto y te empareja con alguien que esté esperando ese monto, o te crea la mesa.
 - **Ficha del rival**: partidas jugadas, % de victorias y nivel, para saber contra quién te sentás.
 - **Moderación de nombres**: filtro de palabras al registrarse y al cambiar el nombre, y el admin puede forzar un cambio.
-- **Verificación en pasos**: registrarse y jugar gratis sin datos, pedir nombre y fecha de nacimiento para la primera apuesta, y DNI recién para el primer retiro.
+- **Verificación en pasos**: ya vamos por ese camino (Google para entrar, DNI recién en el primer depósito o retiro). Falta sumar la fecha de nacimiento y los términos.
 - **Diseño que aproveche el escritorio**: en la PC, sala y detalle uno al lado del otro.
 - **2 vs 2 recién después** de tener sólido el 1v1, porque es mucho cambio en la lógica de `Partida`.
 
