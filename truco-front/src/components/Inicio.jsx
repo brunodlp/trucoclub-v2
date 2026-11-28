@@ -171,7 +171,7 @@ export default function Inicio() {
         </section>
       </main>
 
-      {hoja === "deposito" && <HojaDeposito datos={datosPagos} onCerrar={() => setHoja(null)} onListo={listo} />}
+      {hoja === "deposito" && <HojaDeposito datos={datosPagos} dni={perfil?.dni} onCerrar={() => setHoja(null)} onSaldo={cargarPerfil} />}
       {hoja === "retiro" && (
         <HojaRetiro datos={datosPagos} saldo={Number(perfil?.saldo ?? 0)} onCerrar={() => setHoja(null)} onListo={listo} />
       )}

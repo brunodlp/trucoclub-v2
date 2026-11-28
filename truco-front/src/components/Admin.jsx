@@ -4,9 +4,16 @@ import { API_URL, obtenerUsuario, pedirConSesion, leerError } from "../config";
 import Navegacion, { Encabezado } from "./Navegacion";
 import AdminGanancias from "./AdminGanancias";
 import AdminJugadores from "./AdminJugadores";
+import AdminTransferencias from "./AdminTransferencias";
 import { pesos, formatearFecha, EstadoChip, IconoTipo, Hoja, Copiable, BotonPrincipal, Aviso, formatoDni } from "./plata";
 
 const NOMBRE = { DEPOSITO: "Depósito", RETIRO: "Retiro" };
+
+/** El jugador tiene 10 minutos para transferir; después el depósito se cancela solo. */
+function venceEn(creado) {
+  const min = Math.ceil(10 - (Date.now() - new Date(creado).getTime()) / 60000);
+  return min > 0 ? `Se cancela solo en ${min} min si no lo aprobás.` : "Por vencer…";
+}
 
 function Pendiente({ m, onAprobar, onRechazar }) {
   const deposito = m.tipo === "DEPOSITO";
@@ -25,9 +32,17 @@ function Pendiente({ m, onAprobar, onRechazar }) {
         </div>
         <p className="text-xl font-black tabular-nums">{pesos.format(m.monto)}</p>
       </div>
-      <div className="mt-3 rounded-2xl bg-black/20 px-3.5">
-        <Copiable etiqueta={deposito ? "Número de operación" : "Transferir a (alias / CBU)"} valor={m.detalle} />
-      </div>
+      {deposito ? (
+        <p className="mt-3 rounded-2xl bg-black/20 px-3.5 py-2.5 text-xs text-white/70 leading-relaxed">
+          Buscá en el banco una transferencia de <b className="text-white">{pesos.format(m.monto)}</b> desde una cuenta
+          con DNI <b className="text-white">{m.dni ? formatoDni(m.dni) : "?"}</b>. Si viene de otra persona, rechazala.
+          <span className="block mt-1 text-amber-200/90">{venceEn(m.creado)}</span>
+        </p>
+      ) : (
+        <div className="mt-3 rounded-2xl bg-black/20 px-3.5">
+          <Copiable etiqueta="Transferir a (alias / CBU)" valor={m.detalle} />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2.5 mt-3">
         <button onClick={() => onRechazar(m)} className="h-11 rounded-full font-semibold bg-white/10 hover:bg-white/15 active:scale-95 transition">
           Rechazar
@@ -75,6 +90,7 @@ export default function Admin() {
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState("");
+  const [sinIdentificar, setSinIdentificar] = useState(0);
 
   const traer = useCallback(async (estado) => {
     const res = await pedirConSesion(`${API_URL}/api/admin/movimientos?estado=${estado}`);
@@ -88,6 +104,10 @@ export default function Admin() {
   const cargar = useCallback(() => {
     traer("PENDIENTE").then((l) => l && setPendientes(l)).catch(() => {});
     traer("RESUELTOS").then((l) => l && setResueltos(l)).catch(() => {});
+    pedirConSesion(`${API_URL}/api/admin/transferencias?estado=SIN_IDENTIFICAR`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((l) => l && setSinIdentificar(l.length))
+      .catch(() => {});
   }, [traer]);
 
   useEffect(() => {
@@ -131,7 +151,7 @@ export default function Admin() {
     const plata = pesos.format(a.m.monto);
     if (a.tipo === "aprobar") {
       return a.m.tipo === "DEPOSITO"
-        ? `Confirmá que te llegó la transferencia (op. ${a.m.detalle}). Se le suman ${plata} a ${a.m.usuario}.`
+        ? `Confirmá que te llegó la transferencia de ${plata} desde una cuenta a nombre de ${a.m.usuario}. Se le suman a su saldo.`
         : `Confirmá que ya le transferiste ${plata} a ${a.m.detalle}. Su saldo ya estaba descontado.`;
     }
     return a.m.tipo === "DEPOSITO"
@@ -152,6 +172,7 @@ export default function Admin() {
             <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 mb-4 [scrollbar-width:none]">
               {[
                 ["pendientes", `Pendientes${pendientes?.length ? ` (${pendientes.length})` : ""}`],
+                ["transferencias", `Transferencias${sinIdentificar ? ` (${sinIdentificar})` : ""}`],
                 ["jugadores", "Jugadores"],
                 ["ganancias", "Ganancias"],
                 ["historial", "Historial"],
@@ -185,6 +206,8 @@ export default function Admin() {
                   ))}
                 </ul>
               ))}
+
+            {pestania === "transferencias" && <AdminTransferencias onAviso={mostrarAviso} onCantidad={setSinIdentificar} />}
 
             {pestania === "ganancias" && <AdminGanancias />}
 

@@ -1,6 +1,7 @@
 package com.trucoclub.service;
 
 import com.trucoclub.dto.DatosPagos;
+import com.trucoclub.dto.DepositoActivo;
 import com.trucoclub.dto.MovimientoVista;
 import com.trucoclub.entity.EstadoMovimiento;
 import com.trucoclub.entity.Notificacion;
@@ -11,11 +12,14 @@ import com.trucoclub.repository.MovimientoRepository;
 import com.trucoclub.repository.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -34,15 +38,15 @@ import java.util.regex.Pattern;
 @Service
 public class MovimientoService {
 
-    private static final int MAX_DEPOSITOS_PENDIENTES = 3;
     private static final Pattern ALIAS = Pattern.compile("[A-Za-z0-9.\\-]{6,20}");
     private static final Pattern CBU = Pattern.compile("\\d{22}");
-    private static final Pattern OPERACION = Pattern.compile("[A-Za-z0-9\\-]{4,40}");
 
     private final MovimientoRepository movimientoRepository;
     private final UsuarioRepository usuarioRepository;
     private final DatosPagos datosPagos;
     private final NotificacionService notificaciones;
+    /** Cuánto tiempo tiene el jugador para transferir después de poner el monto. */
+    private final Duration tiempoDeposito;
 
     public MovimientoService(MovimientoRepository movimientoRepository,
                              UsuarioRepository usuarioRepository,
@@ -53,7 +57,9 @@ public class MovimientoService {
                              @Value("${trucoclub.pagos.minimo-deposito:500}") BigDecimal minimoDeposito,
                              @Value("${trucoclub.pagos.minimo-retiro:1000}") BigDecimal minimoRetiro,
                              @Value("${trucoclub.pagos.maximo:1000000}") BigDecimal maximo,
-                             @Value("${trucoclub.pagos.retiros-por-dia:2}") int retirosPorDia) {
+                             @Value("${trucoclub.pagos.retiros-por-dia:2}") int retirosPorDia,
+                             @Value("${trucoclub.pagos.minutos-deposito:10}") int minutosDeposito) {
+        this.tiempoDeposito = Duration.ofMinutes(minutosDeposito);
         this.movimientoRepository = movimientoRepository;
         this.usuarioRepository = usuarioRepository;
         this.notificaciones = notificaciones;
@@ -72,22 +78,57 @@ public class MovimientoService {
                 .map(MovimientoVista::paraUsuario).toList();
     }
 
+    /**
+     * El jugador pone el monto y arranca el depósito: tiene {@link #tiempoDeposito} para transferir.
+     * Si un admin lo aprueba antes, se acredita; si no, se vence solo (ver {@link #vencerDepositos()}).
+     * Hay un solo depósito en curso por jugador.
+     */
     @Transactional
-    public MovimientoVista pedirDeposito(String username, BigDecimal monto, String operacion) {
+    public DepositoActivo pedirDeposito(String username, BigDecimal monto) {
         BigDecimal valor = validarMonto(monto, datosPagos.minimoDeposito());
-        String detalle = limpiar(operacion);
-        if (!OPERACION.matcher(detalle).matches()) {
-            throw error(HttpStatus.BAD_REQUEST, "Poné el número de operación de la transferencia (solo letras y números).");
-        }
-        if (movimientoRepository.countByUsuarioUsernameAndTipoAndEstado(username, TipoMovimiento.DEPOSITO, EstadoMovimiento.PENDIENTE)
-                >= MAX_DEPOSITOS_PENDIENTES) {
-            throw error(HttpStatus.CONFLICT, "Ya tenés " + MAX_DEPOSITOS_PENDIENTES + " depósitos esperando revisión. Esperá a que los aprueben.");
-        }
-        Usuario usuario = usuarioRepository.findByUsername(username)
+        Usuario usuario = usuarioRepository.buscarParaActualizarSaldo(username) // bloquea: dos clics a la vez no crean dos
                 .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "No existe el usuario"));
         exigirDni(usuario);
-        Movimiento m = new Movimiento(usuario, TipoMovimiento.DEPOSITO, valor, detalle);
-        return MovimientoVista.paraUsuario(movimientoRepository.save(m));
+        if (depositoActivo(username).movimiento() != null) {
+            throw error(HttpStatus.CONFLICT, "Ya tenés un depósito en curso. Esperá a que se acredite o cancelalo.");
+        }
+        Movimiento m = movimientoRepository.save(new Movimiento(usuario, TipoMovimiento.DEPOSITO, valor, "Transferencia"));
+        return new DepositoActivo(MovimientoVista.paraUsuario(m), tiempoDeposito.toSeconds());
+    }
+
+    /** El depósito en curso del jugador con los segundos que le quedan (si ya se pasó, se vence ahora). */
+    @Transactional
+    public DepositoActivo depositoActivo(String username) {
+        return movimientoRepository.findFirstByUsuarioUsernameAndTipoAndEstadoOrderByIdDesc(username,
+                        TipoMovimiento.DEPOSITO, EstadoMovimiento.PENDIENTE)
+                .map(m -> {
+                    long quedan = Duration.between(Movimiento.ahora(), m.getCreado().plus(tiempoDeposito)).toSeconds();
+                    if (quedan > 0) return new DepositoActivo(MovimientoVista.paraUsuario(m), quedan);
+                    vencer(m.getId());
+                    return DepositoActivo.ninguno();
+                })
+                .orElse(DepositoActivo.ninguno());
+    }
+
+    /** Cada 20 segundos: los depósitos que pasaron el tiempo sin que un admin los apruebe se cancelan solos. */
+    @Scheduled(fixedDelay = 20_000, initialDelay = 20_000)
+    @Transactional
+    public void vencerDepositos() {
+        LocalDateTime limite = Movimiento.ahora().minus(tiempoDeposito);
+        movimientoRepository.findByTipoAndEstadoAndCreadoBefore(TipoMovimiento.DEPOSITO, EstadoMovimiento.PENDIENTE, limite)
+                .forEach(m -> vencer(m.getId()));
+    }
+
+    private void vencer(Long id) {
+        Movimiento m = movimientoRepository.buscarParaResolver(id).orElse(null);
+        if (m == null || m.getEstado() != EstadoMovimiento.PENDIENTE) return; // justo lo resolvió un admin
+        m.setEstado(EstadoMovimiento.CANCELADO);
+        m.setResuelto(Movimiento.ahora());
+        m.setResueltoPor("automático");
+        m.setMotivoRechazo("Venció el tiempo para transferir");
+        movimientoRepository.save(m);
+        notificaciones.avisar(m.getUsuario(), Notificacion.Tipo.INFO, "Se venció tu depósito de "
+                + Plata.formato(m.getMonto()) + " porque no vimos la transferencia a tiempo. Si ya transferiste, escribinos.");
     }
 
     @Transactional

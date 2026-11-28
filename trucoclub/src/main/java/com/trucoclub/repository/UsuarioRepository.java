@@ -23,6 +23,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     boolean existsByDni(String dni);
 
+    Optional<Usuario> findByDni(String dni);
+
     /** Búsqueda del admin por nombre (parte del nombre, sin importar mayúsculas). */
     java.util.List<Usuario> findTop20ByUsernameContainingIgnoreCaseOrderByUsernameAsc(String parte);
 

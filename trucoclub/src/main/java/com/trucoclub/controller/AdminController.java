@@ -2,6 +2,8 @@ package com.trucoclub.controller;
 
 import com.trucoclub.dto.AdminUsuario;
 import com.trucoclub.dto.Ganancias;
+import com.trucoclub.dto.TransferenciaVista;
+import com.trucoclub.service.TransferenciaService;
 import com.trucoclub.service.AdminUsuariosService;
 import com.trucoclub.dto.MovimientoVista;
 import com.trucoclub.service.GananciasService;
@@ -27,6 +29,10 @@ import java.util.Map;
  *  GET  /api/admin/usuarios/{id}                   -> ficha: saldo, estadísticas, movimientos y partidas
  *  POST /api/admin/usuarios/{id}/bloquear          -> {motivo} suspende la cuenta
  *  POST /api/admin/usuarios/{id}/desbloquear       -> la reactiva
+ *  GET  /api/admin/transferencias?estado=SIN_IDENTIFICAR|TODAS  -> transferencias que entraron a la cuenta
+ *  POST /api/admin/transferencias                   -> {monto, cuit, nombre, operacion} cargar una a mano
+ *  POST /api/admin/transferencias/{id}/asignar      -> {usuarioId} acreditarla a un jugador
+ *  POST /api/admin/transferencias/{id}/devolver     -> {nota} marcar que se devolvió
  */
 @RestController
 @RequestMapping("/api/admin")
@@ -35,12 +41,51 @@ public class AdminController {
     private final MovimientoService movimientoService;
     private final GananciasService gananciasService;
     private final AdminUsuariosService usuariosService;
+    private final TransferenciaService transferenciaService;
 
     public AdminController(MovimientoService movimientoService, GananciasService gananciasService,
-                           AdminUsuariosService usuariosService) {
+                           AdminUsuariosService usuariosService, TransferenciaService transferenciaService) {
         this.movimientoService = movimientoService;
         this.gananciasService = gananciasService;
         this.usuariosService = usuariosService;
+        this.transferenciaService = transferenciaService;
+    }
+
+    @GetMapping("/transferencias")
+    public List<TransferenciaVista> transferencias(@RequestParam(defaultValue = "SIN_IDENTIFICAR") String estado) {
+        return "SIN_IDENTIFICAR".equalsIgnoreCase(estado) ? transferenciaService.sinIdentificar() : transferenciaService.recientes();
+    }
+
+    /** Lo que manda el admin para cargar a mano una transferencia que vio en el banco. */
+    public record NuevaTransferencia(java.math.BigDecimal monto, String cuit, String nombre, String operacion) {
+    }
+
+    /**
+     * Mientras no esté conectado el aviso automático del banco, el admin carga lo que ve en el extracto
+     * (monto y CUIT/CUIL de quien mandó) y el sistema busca al jugador por DNI y le acredita solo.
+     * Con el número de operación del banco, la misma transferencia no se puede cargar dos veces.
+     */
+    @PostMapping("/transferencias")
+    public TransferenciaService.Resultado cargarTransferencia(@RequestBody NuevaTransferencia t) {
+        String op = t.operacion() == null ? "" : t.operacion().trim().replaceAll("\\s+", "");
+        String idExterno = "MANUAL-" + (op.isEmpty() ? java.util.UUID.randomUUID() : op);
+        return transferenciaService.registrar("MANUAL", idExterno, t.monto(), t.cuit(), t.nombre());
+    }
+
+    @PostMapping("/transferencias/{id}/asignar")
+    public TransferenciaVista asignarTransferencia(@RequestAttribute(AuthInterceptor.ATRIBUTO_USUARIO) String admin,
+                                                   @PathVariable Long id, @RequestBody Map<String, Long> cuerpo) {
+        Long usuarioId = cuerpo == null ? null : cuerpo.get("usuarioId");
+        if (usuarioId == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "Elegí a qué jugador se la acreditás.");
+        return transferenciaService.asignar(admin, id, usuarioId);
+    }
+
+    @PostMapping("/transferencias/{id}/devolver")
+    public TransferenciaVista devolverTransferencia(@RequestAttribute(AuthInterceptor.ATRIBUTO_USUARIO) String admin,
+                                                    @PathVariable Long id,
+                                                    @RequestBody(required = false) Map<String, String> cuerpo) {
+        return transferenciaService.marcarDevuelta(admin, id, cuerpo == null ? null : cuerpo.get("nota"));
     }
 
     @GetMapping("/usuarios")

@@ -1,6 +1,7 @@
 package com.trucoclub.controller;
 
 import com.trucoclub.dto.DatosPagos;
+import com.trucoclub.dto.DepositoActivo;
 import com.trucoclub.dto.MovimientoVista;
 import com.trucoclub.dto.PedidoMovimiento;
 import com.trucoclub.seguridad.AuthInterceptor;
@@ -14,7 +15,8 @@ import java.util.List;
  *
  *  GET  /api/movimientos                 -> mis movimientos
  *  GET  /api/movimientos/datos           -> a dónde transferir, mínimos y máximo
- *  POST /api/movimientos/deposito        -> {monto, detalle: número de operación}
+ *  POST /api/movimientos/deposito        -> {monto} arranca un depósito (10 min para transferir; lo aprueba un admin)
+ *  GET  /api/movimientos/deposito/activo -> el depósito en curso y los segundos que le quedan
  *  POST /api/movimientos/retiro          -> {monto, detalle: alias o CBU/CVU}
  *  POST /api/movimientos/{id}/cancelar   -> cancelar un pedido mío pendiente
  */
@@ -39,9 +41,14 @@ public class MovimientoController {
     }
 
     @PostMapping("/deposito")
-    public MovimientoVista depositar(@RequestAttribute(AuthInterceptor.ATRIBUTO_USUARIO) String usuario,
-                                     @RequestBody PedidoMovimiento pedido) {
-        return movimientoService.pedirDeposito(usuario, pedido.monto(), pedido.detalle());
+    public DepositoActivo deposito(@RequestAttribute(AuthInterceptor.ATRIBUTO_USUARIO) String usuario,
+                                   @RequestBody PedidoMovimiento pedido) {
+        return movimientoService.pedirDeposito(usuario, pedido.monto());
+    }
+
+    @GetMapping("/deposito/activo")
+    public DepositoActivo depositoActivo(@RequestAttribute(AuthInterceptor.ATRIBUTO_USUARIO) String usuario) {
+        return movimientoService.depositoActivo(usuario);
     }
 
     @PostMapping("/retiro")

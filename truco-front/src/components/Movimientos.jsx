@@ -25,7 +25,7 @@ function Fila({ m, onCancelar }) {
         <div className="flex items-center gap-2 mt-1.5">
           {!deMesa && <EstadoChip estado={m.estado} />}
           <span className="min-w-0 flex-1 truncate text-[11px] text-white/40">
-            {deMesa ? m.detalle : m.tipo === "RETIRO" ? `a ${m.detalle}` : `op. ${m.detalle}`}
+            {deMesa ? m.detalle : m.tipo === "RETIRO" ? `a ${m.detalle}` : /^\w+$/.test(m.detalle ?? "") && /\d/.test(m.detalle) ? `op. ${m.detalle}` : m.detalle}
           </span>
           {m.estado === "PENDIENTE" && (
             <button onClick={() => onCancelar(m)} className="text-xs font-semibold text-white/50 hover:text-white">

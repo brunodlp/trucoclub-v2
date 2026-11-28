@@ -24,6 +24,14 @@ public interface MovimientoRepository extends JpaRepository<Movimiento, Long> {
     /** Pendientes, el más viejo primero (para que el admin los atienda en orden). */
     List<Movimiento> findByEstadoOrderByIdAsc(EstadoMovimiento estado);
 
+    /** El pedido abierto de un tipo para un jugador (depósito en curso). */
+    Optional<Movimiento> findFirstByUsuarioUsernameAndTipoAndEstadoOrderByIdDesc(String username, TipoMovimiento tipo,
+                                                                               EstadoMovimiento estado);
+
+    /** Pedidos de un tipo que siguen abiertos desde antes de cierta hora (para vencerlos). */
+    List<Movimiento> findByTipoAndEstadoAndCreadoBefore(TipoMovimiento tipo, EstadoMovimiento estado,
+                                                        java.time.LocalDateTime antes);
+
     /** Los últimos 100 ya resueltos de ciertos tipos (para el admin: depósitos y retiros). */
     List<Movimiento> findTop100ByEstadoNotAndTipoInOrderByIdDesc(EstadoMovimiento estado, Collection<TipoMovimiento> tipos);
 
